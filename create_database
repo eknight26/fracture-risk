@@ -111,7 +111,7 @@ smoking <- read_xpt("P_SMQRTU.XPT") %>%
   select(SEQN, cigarettes_smoked)
 
 
-# merge all datasets to main data, 'left_join' to maintain main set structure
+#### MERGING all datasets to main data, 'left_join' to maintain main set structure
 main_data <- main_data %>%
   left_join(dexa_femur, by = join_by(SEQN)) %>%
   left_join(dexa_spine, by = join_by(SEQN)) %>%
@@ -153,7 +153,7 @@ names(main_data)
 pander(table(main_data$hx_fracture))
 
 
-#### MISSING VALUES
+#### Check MISSING VALUES
 # get total number of NA values
 total_na_count <- colSums(is.na(main_data))
 
@@ -174,11 +174,11 @@ na_proportion <- na_proportion[order(na_proportion$Percent_Missing, decreasing =
 write.csv(na_proportion, "na_proportion.csv", row.names = FALSE)
 
 
-
 # filter na_proportion to include only rows where Percent_Missing is greater than 0
 na_proportion_filtered <- na_proportion %>%
   filter(Percent_Missing > 0)
 
+# PLOT missing data
 ggplot(na_proportion_filtered, aes(x = reorder(Feature, Percent_Missing), y = Percent_Missing)) +
   geom_bar(stat = "identity", fill = "grey50") +          
   coord_flip() +
@@ -208,7 +208,7 @@ main_data$hx_fracture <- as.factor(main_data$hx_fracture)
 write_csv(main_data, 'main_data.csv')
 
 
-###### MERGING with t_score dataset for BMD
+###### MERGING main_data with t_score_bmd
 
 # load data
 dexa_t_score <- read_csv('dexa_t_scores.csv', show_col_types = FALSE)
