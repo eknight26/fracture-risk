@@ -1,0 +1,604 @@
+# load packages
+library(car)
+library(readr)
+library(caret)
+library(PropCIs)
+library(DescTools)
+library(glm2)
+library(pander)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(glmnet)
+
+# load data
+fracture <- read_csv("main_data.csv", show_col_types = FALSE)
+ward_t_score <- read_csv("dexa_t_scores.csv", show_col_types = FALSE)
+
+fracture_t_score <- fracture %>%
+  left_join(ward_t_score, by = join_by(SEQN))
+
+# Define values to replace with NA
+values_to_replace <- c(".", " ", "7", "9")
+
+# Convert specified columns to characters, replace values, and convert back to factors
+fracture_t_score <- fracture_t_score %>%
+  select(-SEQN) %>%  # Remove the SEQN column
+  mutate(across(c(OSQ060, OSQ080, OSQ130, OSQ150, OSQ170, OSQ200, hx_fracture, 
+                  BPQ020, BPQ080, DIQ010, MCQ160A, MCQ160B, MCQ160C, 
+                  MCQ160E, MCQ160F, MCQ160L, MCQ160M, MCQ160P, 
+                  MCQ080, MCQ010, MCQ220), 
+                ~ factor(replace(as.character(.), . %in% values_to_replace, NA)))) %>% 
+  mutate(across(c(RIAGENDR, RIDRETH3), as.factor))
+
+# replace 7777 and 9999 values as NA
+fracture_t_score <- fracture_t_score %>%
+  mutate(
+    PAD680 = ifelse(PAD680 %in% c("777", "7777", "999", "9999"), NA, PAD680),  
+    alcohol_consumed = ifelse(alcohol_consumed %in% c("777", "7777", "999", "9999"), NA, alcohol_consumed)  
+  )
+
+
+# Categorising 'INDFMPIR' into income levels
+fracture_t_score$INDFMPIRbinned <- cut(fracture_t_score$INDFMPIR, 
+                                       breaks = c(0, 1, 4, Inf), 
+                                       labels = c('Low', 'Mid', 'High'), # Low, Middle, High
+                                       right = FALSE)  # right = FALSE to make intervals [0, 1), [1, 4), [4, Inf)
+# Categorising 'RIDAGEYR' into age groups
+fracture_t_score$RIDAGEYRbinned <- cut(fracture_t_score$RIDAGEYR, 
+                                       breaks = c(50, 59, 69, 79, Inf), 
+                                       labels = c('50-59', '60-69', '70-79', '80+'), # 50-59, 60-69, 70-79, 80+
+                                       right = TRUE)  # right = TRUE to make intervals [50, 59], [60, 69], [70, 79], [80, Inf)
+
+# Categorize BMI
+fracture_t_score$BMI <- cut(fracture_t_score$BMXBMI,
+                            breaks = c(-Inf, 18.5, 25, 30, 35, 40, Inf), 
+                            labels = c('Underweight', 'Healthy Weight', 'Overweight', 
+                                       'Class 1 Obesity', 'Class 2 Obesity', 'Class 3 Obesity'))
+
+# Categorize BP measurements (Systolic Blood Pressure)
+fracture_t_score$BPSYS <- cut(fracture_t_score$BPXMSYS,
+                              breaks = c(-Inf, 120, 130, Inf), 
+                              labels = c('Normal', 'Elevated', 'High Blood Pressure'))
+
+# catgeorise BMD into normal, low bone mass (osteopenia), osteoporosis
+fracture_t_score$T_score_WDBMD_category <- cut(fracture_t_score$T_score_WDBMD, 
+                                               breaks = c(-Inf, -2.5, -1, Inf),   
+                                               labels = c("Osteoporosis", "Low Bone Mass", "Normal"),  
+                                               right = FALSE
+)
+
+
+# # Print the table to check the result
+# table(fracture_t_score$T_score_WDBMD_category)
+
+
+
+
+# Define groups of numerical features
+groups <- list(
+  "Group 1: Interview" = c('alcohol_consumed', 'PAD680', 'cigarettes_smoked'), 
+  "Group 2: Laboratory" = c('LBDFOTSI', 'LBXSAPSI', 'LBDSPHSI', 'LBDSCASI',
+                            'LBDBPBSI', 'LBDBCDSI', 'LBDTHGSI', 'LBDBSESI', 'LBDBMNSI'),  
+  "Group 3: Bone Mineral Density" = c('DXXOFBMD', 'DXXNKBMD', 'DXXTRBMD', 'DXXINBMD',
+                                      'DXXWDBMD', 'DXXOSBMD', 'DXXL1BMD', 'DXXL2BMD', 
+                                      'DXXL3BMD', 'DXXL4BMD')  
+)
+
+groups_cat <- list(
+  "Group 1: Interview" = c('RIDAGEYRbinned', 'RIAGENDR', 'RIDRETH3', 'INDFMPIRbinned', 'BMI', 'BPSYS',
+                           'OSQ060', 'OSQ080', 'OSQ130', 'OSQ150', 'OSQ170', 'OSQ200', 'hx_fracture', 
+                           'BPQ020', 'BPQ080', 'DIQ010', 'MCQ160A', 'MCQ160B', 'MCQ160C', 
+                           'MCQ160E', 'MCQ160F', 'MCQ160L', 'MCQ160M', 'MCQ160P', 
+                           'MCQ080', 'MCQ010', 'MCQ220')
+)
+
+
+# Check for missing values in the dataset
+missing_summary <- sapply(fracture_t_score, function(x) sum(is.na(x)))
+missing_summary
+
+
+# Perform multiple imputation
+imputed_data_global <- mice(fracture_t_score, method = 'pmm', m = 5, maxit = 5, seed = 301)
+
+# Choose the first imputed dataset
+complete_data_global <- complete(imputed_data_global, 1)
+colnames(complete_data_global)
+
+
+
+
+
+
+
+
+##### Prediction
+
+# Load necessary libraries
+library(knitr)
+library(kableExtra)
+library(pROC)
+library(caret)
+
+# set seed for reproducibility
+set.seed(301)
+
+# split dataset into training and test set
+trainIndex1 <- createDataPartition(complete_data_g1$hx_fracture, p = 0.7, list = FALSE)
+training_int <- complete_data_g1[trainIndex1, ]
+test_int <- complete_data_g1[-trainIndex1, ]
+
+# fit a logistic regression model (ie significant features and interactions)
+logreg_group1 <- glm(hx_fracture ~ 
+                       (RIDAGEYRbinned * RIAGENDR) +
+                       RIDRETH3 +
+                       alcohol_consumed +
+                       RIAGENDR * (OSQ060 + OSQ080) + 
+                       MCQ160F + 
+                       MCQ010, 
+                     family = binomial, 
+                     data = training_int)
+
+summary(logreg_group1)
+
+
+# get predicted probabilities using predict function
+predicted_probabilities_int <- predict(logreg_group1, newdata = test_int, type = "response")
+
+# create a ROC curve
+roc_int <- roc(test_int$hx_fracture, predicted_probabilities_int)
+
+# calculate the optimal threshold using Youden's index
+optimal_threshold_int <- coords(roc_int, "best", best.method = "youden")$threshold
+cat("Optimal threshold based on Youden's index:", optimal_threshold_int, "\n")
+
+# classify using the optimal threshold
+optimal_predicted_classes_int <- ifelse(predicted_probabilities_int > optimal_threshold_int, 1, 0)
+
+# combine predictions with actual values for evaluation
+predictions_int <- data.frame(Actual = test_int$hx_fracture, 
+                              Predicted_Probability = predicted_probabilities_int, 
+                              Predicted_Class = optimal_predicted_classes_int)
+
+# print the predictions data frame
+kable(predictions_int, caption = "Predictions Summary") %>%
+  kable_styling(full_width = F, position = "left")
+
+# =evaluate the model's performance
+confusion_matrix_int <- table(Actual = predictions_int$Actual, Predicted = predictions_int$Predicted_Class)
+print(confusion_matrix_int)
+
+
+## manual calculation
+# Extract TP, TN, FP, FN
+TP <- confusion_matrix_int["1", "1"]
+TN <- confusion_matrix_int["0", "0"]
+FP <- confusion_matrix_int["0", "1"]
+FN <- confusion_matrix_int["1", "0"]
+
+# Calculate Precision
+precision_int <- TP / (TP + FP)
+
+# Calculate Recall
+recall_int <- TP / (TP + FN)
+
+# Calculate Specificity
+specificity_int <- TN / (TN + FP)
+
+# Calculate F2 Score
+beta <- 2
+f2_score_int <- (1 + beta^2) * (precision_int * recall_int) / ((beta^2 * precision_int) + recall_int)
+
+# Calculate Accuracy
+accuracy_int <- (TP + TN) / sum(confusion_matrix_int)
+
+# Calculate AUC
+library(pROC)
+roc_int <- roc(predictions_int$Actual, predicted_probabilities_int)
+auc_value_int <- auc(roc_int)
+
+# Output the metrics
+cat("Accuracy:", accuracy_int, "\n")
+cat("Precision:", precision_int, "\n")
+cat("Recall (Sensitivity):", recall_int, "\n")
+cat("Specificity:", specificity_int, "\n")
+cat("F2 Score:", f2_score_int, "\n")
+cat("AUC:", auc_value_int, "\n")
+
+# create a summary table of metrics
+metrics_int <- data.frame(
+  Metric = c("Accuracy", "Precision", "Recall", "Specificity", "F2 Score", "AUC"),
+  Value = c(accuracy_int, precision_int, recall_int, specificity_int, f2_score_int, auc_value_int)
+)
+
+# print the metrics table using kable
+kable(metrics_int, caption = "Model Performance Metrics") %>%
+  kable_styling(full_width = F, position = "left")
+
+
+
+##### group 2
+
+# Split dataset into training and test set
+trainIndexlab <- createDataPartition(complete_data_g2$hx_fracture, p = 0.7, list = FALSE)
+training_lab <- complete_data_g2[trainIndexlab, ]
+test_lab <- complete_data_g2[-trainIndexlab, ]
+
+
+# Run the logistic regression model again
+logreg_group2 <- glm(hx_fracture ~ 
+                       LBDTHGSI, 
+                     family = binomial, 
+                     data = training_lab) 
+
+# View the summary of the logistic regression model
+summary_model2 <- summary(logreg_group2)
+summary_model2
+
+# use the predict function to get predicted probabilities
+predicted_probabilities_lab <- predict(logreg_group2, newdata = test_lab, type = "response")
+
+# create a ROC curve
+roc_lab <- roc(test_lab$hx_fracture, predicted_probabilities_lab)
+
+# calculate the optimal threshold using Youden's index
+optimal_threshold_lab <- coords(roc_lab, "best", best.method = "youden")$threshold
+cat("Optimal threshold based on Youden's index:", optimal_threshold_lab, "\n")
+
+# classify using the optimal threshold
+optimal_predicted_classes_lab <- ifelse(predicted_probabilities_lab > optimal_threshold_lab, 1, 0)
+
+# combine predictions with actual values for evaluation
+predictions_lab <- data.frame(Actual = test_lab$hx_fracture, 
+                              Predicted_Probability = predicted_probabilities_lab, 
+                              Predicted_Class = optimal_predicted_classes_lab)
+
+confusion_matrix_lab <- table(Actual = predictions_lab$Actual, Predicted = predictions_lab$Predicted_Class)
+print(confusion_matrix_lab)
+
+## manual calculation
+# Extract TP, TN, FP, FN
+TPlab <- confusion_matrix_lab["1", "1"]
+TNlab <- confusion_matrix_lab["0", "0"]
+FPlab <- confusion_matrix_lab["0", "1"]
+FNlab <- confusion_matrix_lab["1", "0"]
+
+# Calculate Precision
+precision_lab <- TPlab / (TPlab + FPlab)
+
+# Calculate Recall
+recall_lab <- TPlab / (TPlab + FNlab)
+
+# Calculate Specificity
+specificity_lab <- TNlab / (TNlab + FPlab)
+
+# Calculate F2 Score
+beta <- 2
+f2_score_lab <- (1 + beta^2) * (precision_lab * recall_lab) / ((beta^2 * precision_lab) + recall_lab)
+
+# Calculate Accuracy
+accuracy_lab <- (TPlab + TNlab) / sum(confusion_matrix_lab)
+
+# Calculate AUC
+library(pROC)
+roc_lab <- roc(predictions_lab$Actual, predicted_probabilities_lab)
+auc_value_lab <- auc(roc_lab)
+
+# Output the metrics
+cat("Accuracy:", accuracy_lab, "\n")
+cat("Precision:", precision_lab, "\n")
+cat("Recall (Sensitivity):", recall_lab, "\n")
+cat("Specificity:", specificity_lab, "\n")
+cat("F2 Score:", f2_score_lab, "\n")
+cat("AUC:", auc_value_lab, "\n")
+
+# create a summary table of metrics
+metrics_lab <- data.frame(
+  Metric = c("Accuracy", "Precision", "Recall", "Specificity", "F2 Score", "AUC"),
+  Value = c(accuracy_lab, precision_lab, recall_lab, specificity_lab, f2_score_lab, auc_value_lab)
+)
+
+# print the metrics table using kable
+kable(metrics_lab, caption = "Model Performance Metrics") %>%
+  kable_styling(full_width = F, position = "left")
+
+
+
+
+### group 3
+
+# Set seed for reproducibility
+set.seed(301)
+
+# Split dataset into training and test set
+trainIndex3 <- createDataPartition(complete_data_g3$hx_fracture, p = 0.7, list = FALSE)
+training_bmd <- complete_data_g3[trainIndex3, ]
+test_bmd <- complete_data_g3[-trainIndex3, ]
+
+
+# Run the logistic regression model again
+logreg_group3 <- glm(hx_fracture ~ 
+                       T_score_WDBMD,
+                     family = binomial, 
+                     data = training_bmd) 
+
+# View the summary of the logistic regression model
+summary_model3 <- summary(logreg_group3)
+summary_model3
+
+# use the predict function to get predicted probabilities
+predicted_probabilities_bmd <- predict(logreg_group3, newdata = test_bmd, type = "response")
+
+# create a ROC curve
+roc_bmd <- roc(test_bmd$hx_fracture, predicted_probabilities_bmd)
+
+# calculate the optimal threshold using Youden's index
+optimal_threshold_bmd <- coords(roc_bmd, "best", best.method = "youden")$threshold
+cat("Optimal threshold based on Youden's index:", optimal_threshold_bmd, "\n")
+
+# classify using the optimal threshold
+optimal_predicted_classes_bmd <- ifelse(predicted_probabilities_bmd > optimal_threshold_bmd, 1, 0)
+
+# combine predictions with actual values for evaluation
+predictions_bmd <- data.frame(Actual = test_bmd$hx_fracture, 
+                              Predicted_Probability = predicted_probabilities_bmd, 
+                              Predicted_Class = optimal_predicted_classes_bmd)
+
+confusion_matrix_bmd <- table(Actual = predictions_bmd$Actual, Predicted = predictions_bmd$Predicted_Class)
+print(confusion_matrix_bmd)
+
+## manual calculation
+# Extract TP, TN, FP, FN
+TPbmd <- confusion_matrix_bmd["1", "1"]
+TNbmd <- confusion_matrix_bmd["0", "0"]
+FPbmd <- confusion_matrix_bmd["0", "1"]
+FNbmd <- confusion_matrix_bmd["1", "0"]
+
+# Calculate Precision
+precision_bmd <- TPbmd / (TPbmd + FPbmd)
+
+# Calculate Recall
+recall_bmd <- TPbmd / (TPbmd + FNbmd)
+
+# Calculate Specificity
+specificity_bmd <- TNbmd / (TNbmd + FPbmd)
+
+# Calculate F2 Score
+beta <- 2
+f2_score_bmd <- (1 + beta^2) * (precision_bmd * recall_bmd) / ((beta^2 * precision_bmd) + recall_bmd)
+
+# Calculate Accuracy
+accuracy_bmd <- (TPbmd + TNbmd) / sum(confusion_matrix_bmd)
+
+# Calculate AUC
+library(pROC)
+roc_bmd <- roc(predictions_bmd$Actual, predicted_probabilities_bmd)
+auc_value_bmd <- auc(roc_bmd)
+
+# Output the metrics
+cat("Accuracy:", accuracy_bmd, "\n")
+cat("Precision:", precision_bmd, "\n")
+cat("Recall (Sensitivity):", recall_bmd, "\n")
+cat("Specificity:", specificity_bmd, "\n")
+cat("F2 Score:", f2_score_bmd, "\n")
+cat("AUC:", auc_value_bmd, "\n")
+
+# Create a summary table of metrics
+metrics_bmd <- data.frame(
+  Metric = c("Accuracy", "Precision", "Recall", "Specificity", "F2 Score", "AUC"),
+  Value = c(accuracy_bmd, precision_bmd, recall_bmd, specificity_bmd, f2_score_bmd, auc_value_bmd)
+)
+
+# Print the metrics table using kable for better presentation
+kable(metrics_bmd, caption = "Model Performance Metrics with Optimal Threshold") %>%
+  kable_styling(full_width = F, position = "left")
+
+
+
+
+
+##### Logistic regression all signif predictors
+logit_all <- glm(hx_fracture ~
+                   (RIDAGEYRbinned * RIAGENDR) +
+                   RIDRETH3 +
+                   alcohol_consumed +
+                   RIAGENDR * (OSQ060 + OSQ080) + 
+                   MCQ160F + 
+                   MCQ010 +
+                   LBDTHGSI +
+                   T_score_WDBMD,
+                 family = binomial, 
+                 data = complete_data_global)
+
+# View the summary of the logistic regression model
+summary_all_model <- summary(logit_all)
+pander(summary_all_model)
+
+
+
+# Exponentiating the coefficients to get odds ratios
+odds_ratios_all <- exp(coef(logit_all))
+
+# Calculating confidence intervals for the model
+conf_all <- confint(logit_all)
+
+# Exponentiate the confidence intervals to get odds ratio confidence intervals
+odds_ratios_ci_all <- exp(conf_all)
+
+# Combine odds ratios and confidence intervals into a data frame for better readability
+odds_ratios_summary_all <- data.frame(
+  Odds_Ratios = odds_ratios_all,
+  Lower_CI = odds_ratios_ci_all[, 1],
+  Upper_CI = odds_ratios_ci_all[, 2]
+)
+
+odds_ratios_summary_all
+
+
+# Set seed for reproducibility
+set.seed(301)
+
+# Split dataset into training and test set
+trainIndex4 <- createDataPartition(complete_data_global$hx_fracture, p = 0.7, list = FALSE)
+training_all <- complete_data_g3[trainIndex4, ]
+test_all <- complete_data_global[-trainIndex4, ]
+
+
+# Logistic regression all signif predictors
+logreg_all <- glm(hx_fracture ~
+                   (RIDAGEYRbinned * RIAGENDR) +
+                   RIDRETH3 +
+                   alcohol_consumed +
+                   RIAGENDR * (OSQ060 + OSQ080) + 
+                   MCQ160F + 
+                   MCQ010 +
+                   LBDTHGSI +
+                   T_score_WDBMD,
+                 family = binomial, 
+                 data = complete_data_global)
+
+# use the predict function to get predicted probabilities
+predicted_probabilities_all <- predict(logreg_all, newdata = test_all, type = "response")
+
+# create a ROC curve
+roc_all <- roc(test_all$hx_fracture, predicted_probabilities_all)
+
+# calculate the optimal threshold using Youden's index
+optimal_threshold_all <- coords(roc_all, "best", best.method = "youden")$threshold
+cat("Optimal threshold based on Youden's index:", optimal_threshold_all, "\n")
+
+# classify using the optimal threshold
+optimal_predicted_classes_all <- ifelse(predicted_probabilities_all > optimal_threshold_all, 1, 0)
+
+# combine predictions with actual values for evaluation
+predictions_all <- data.frame(Actual = test_all$hx_fracture, 
+                              Predicted_Probability = predicted_probabilities_all, 
+                              Predicted_Class = optimal_predicted_classes_all)
+
+confusion_matrix_all <- table(Actual = predictions_all$Actual, Predicted = predictions_all$Predicted_Class)
+print(confusion_matrix_all)
+
+## manual calculation
+# Extract TP, TN, FP, FN
+TPall <- confusion_matrix_all["1", "1"]
+TNall <- confusion_matrix_all["0", "0"]
+FPall<- confusion_matrix_all["0", "1"]
+FNall <- confusion_matrix_all["1", "0"]
+
+# Calculate Precision
+precision_all <- TPall / (TPall + FPall)
+
+# Calculate Recall
+recall_all <- TPall / (TPall + FNall)
+
+# Calculate Specificity
+specificity_all <- TNall / (TNall + FPall)
+
+# Calculate F2 Score
+beta <- 2
+f2_score_all <- (1 + beta^2) * (precision_all * recall_all) / ((beta^2 * precision_all) + recall_all)
+
+# Calculate Accuracy
+accuracy_all <- (TPall + TNall) / sum(confusion_matrix_all)
+
+# Calculate AUC
+library(pROC)
+roc_all <- roc(predictions_all$Actual, predicted_probabilities_all)
+auc_value_all <- auc(roc_all)
+
+# Output the metrics
+cat("Accuracy:", accuracy_all, "\n")
+cat("Precision:", precision_all, "\n")
+cat("Recall (Sensitivity):", recall_all, "\n")
+cat("Specificity:", specificity_all, "\n")
+cat("F2 Score:", f2_score_all, "\n")
+cat("AUC:", auc_value_all, "\n")
+
+# Create a summary table of metrics
+metrics_all <- data.frame(
+  Metric = c("Accuracy", "Precision", "Recall", "Specificity", "F2 Score", "AUC"),
+  Value = c(accuracy_all, precision_all, recall_all, specificity_all, f2_score_all, auc_value_all)
+)
+
+# Print the metrics table using kable for better presentation
+kable(metrics_all, caption = "Model Performance Metrics with Optimal Threshold") %>%
+  kable_styling(full_width = F, position = "left")
+
+
+
+
+
+
+### plot ROC-AUC for all groups
+
+# Save the plot as a PNG with 300 DPI
+png("roc_curves.png", width = 8, height = 6, units = "in", res = 300)
+
+# Set up different line types for the ROC curves
+line_types <- c(1, 2, 3, 4)  # Solid, dashed, dotted, and dash-dotted
+
+# Calculate AUC values for each group
+auc_value_int <- auc(roc_int)
+auc_value_lab <- auc(roc_lab)
+auc_value_bmd <- auc(roc_bmd)
+auc_value_all <- auc(roc_all)
+
+# Plot the first ROC curve
+plot(roc_int, 
+     main = "",
+     lty = line_types[1],  # Solid line for group int
+     col = "grey10",        
+     lwd = 2,
+     # print.auc = TRUE, 
+     print.auc.x = 0.5, 
+     print.auc.y = 0.2,
+     cex.main = 1.2, 
+     cex.lab = 1.2,  
+     cex.axis = 1.2)
+
+# Add the second ROC curve with a dashed line
+plot(roc_lab, 
+     lty = line_types[2],  # Dashed line for group lab
+     col = "black", 
+     lwd = 2, 
+     add = TRUE, 
+     # print.auc = TRUE, 
+     print.auc.x = 0.5, 
+     print.auc.y = 0.15)
+
+# Add the third ROC curve with a dotted line
+plot(roc_bmd, 
+     lty = line_types[3],  # Dotted line for group bmd
+     col = "grey20", 
+     lwd = 2, 
+     add = TRUE, 
+     # print.auc = TRUE, 
+     print.auc.x = 0.5, 
+     print.auc.y = 0.1)
+
+# Add the fourth ROC curve with a dash-dotted line
+plot(roc_all, 
+     lty = line_types[4],  # Dash-dotted line for group all
+     col = "grey30", 
+     lwd = 2, 
+     add = TRUE, 
+     # print.auc = TRUE, 
+     print.auc.x = 0.5, 
+     print.auc.y = 0.05)
+
+# # Add diagonal line for chance level
+# abline(a = 0, b = 1, col = "lightgrey", lty = 2)
+
+# Add a legend with AUC values included and line types
+legend("bottomright", 
+       legend = c(paste("Interview (AUC =", round(auc_value_int, 3), ")"),
+                  paste("Laboratory (AUC =", round(auc_value_lab, 3), ")"),
+                  paste("BMD (AUC =", round(auc_value_bmd, 3), ")"),
+                  paste("All (AUC =", round(auc_value_all, 3), ")")), 
+       lty = line_types,   
+       lwd = 2, 
+       bty = "n",
+       cex = 1.5)
+
+dev.off()
