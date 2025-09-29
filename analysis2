@@ -1,0 +1,279 @@
+# load packages
+library(car)
+library(readr)
+library(caret)
+library(PropCIs)
+library(DescTools)
+library(glm2)
+library(pander)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+# load data
+fracture <- read_csv("main_data.csv", show_col_types = FALSE)
+
+# Define values to replace with NA
+values_to_replace <- c(".", " ", "7", "9")
+
+# Convert specified columns to characters, replace values, and convert back to factors
+fracture <- fracture %>%
+  select(-SEQN) %>%  # Remove the SEQN column
+  mutate(across(c(OSQ060, OSQ080, OSQ130, OSQ150, OSQ170, OSQ200, hx_fracture, 
+                  BPQ020, BPQ080, DIQ010, MCQ160A, MCQ160B, MCQ160C, 
+                  MCQ160E, MCQ160F, MCQ160L, MCQ160M, MCQ160P, 
+                  MCQ080, MCQ010, MCQ220), 
+                ~ factor(replace(as.character(.), . %in% values_to_replace, NA)))) %>% 
+  mutate(across(c(RIAGENDR, RIDRETH3), as.factor))
+
+# replace 7777 and 9999 values as NA
+fracture <- fracture %>%
+  mutate(
+    PAD680 = ifelse(PAD680 %in% c("777", "7777", "999", "9999"), NA, PAD680),  
+    alcohol_consumed = ifelse(alcohol_consumed %in% c("777", "7777", "999", "9999"), NA, alcohol_consumed)  
+  )
+
+
+# Categorising 'INDFMPIR' into income levels
+fracture$INDFMPIRbinned <- cut(fracture$INDFMPIR, 
+                               breaks = c(0, 1, 4, Inf), 
+                               labels = c('Low', 'Mid', 'High'), # Low, Middle, High
+                               right = FALSE)  # right = FALSE to make intervals [0, 1), [1, 4), [4, Inf)
+# Categorising 'RIDAGEYR' into age groups
+fracture$RIDAGEYRbinned <- cut(fracture$RIDAGEYR, 
+                               breaks = c(50, 59, 69, 79, Inf), 
+                               labels = c('50-59', '60-69', '70-79', '80+'), # 50-59, 60-69, 70-79, 80+
+                               right = TRUE)  # right = TRUE to make intervals [50, 59], [60, 69], [70, 79], [80, Inf)
+
+# Categorize BMI
+fracture$BMI <- cut(fracture$BMXBMI,
+                    breaks = c(-Inf, 18.5, 25, 30, 35, 40, Inf), 
+                    labels = c('Underweight', 'Healthy Weight', 'Overweight', 
+                               'Class 1 Obesity', 'Class 2 Obesity', 'Class 3 Obesity'))
+
+# Categorize BP measurements (Systolic Blood Pressure)
+fracture$BPSYS <- cut(fracture$BPXMSYS,
+                      breaks = c(-Inf, 120, 130, Inf), 
+                      labels = c('Normal', 'Elevated', 'High Blood Pressure'))
+
+
+# Define groups of numerical features
+groups <- list(
+  "Group 1: Interview" = c('alcohol_consumed', 'PAD680', 'cigarettes_smoked'), 
+  "Group 2: Laboratory" = c('LBDFOTSI', 'LBXSAPSI', 'LBDSPHSI', 'LBDSCASI',
+                            'LBDBPBSI', 'LBDBCDSI', 'LBDTHGSI', 'LBDBSESI', 'LBDBMNSI'),  
+  "Group 3: Bone Mineral Density" = c('DXXOFBMD', 'DXXNKBMD', 'DXXTRBMD', 'DXXINBMD',
+                                      'DXXWDBMD', 'DXXOSBMD', 'DXXL1BMD', 'DXXL2BMD', 
+                                      'DXXL3BMD', 'DXXL4BMD')  
+)
+
+groups_cat <- list(
+  "Group 1: Interview" = c('RIDAGEYRbinned', 'RIAGENDR', 'RIDRETH3', 'INDFMPIRbinned', 'BMI', 'BPSYS',
+                           'OSQ060', 'OSQ080', 'OSQ130', 'OSQ150', 'OSQ170', 'OSQ200', 'hx_fracture', 
+                           'BPQ020', 'BPQ080', 'DIQ010', 'MCQ160A', 'MCQ160B', 'MCQ160C', 
+                           'MCQ160E', 'MCQ160F', 'MCQ160L', 'MCQ160M', 'MCQ160P', 
+                           'MCQ080', 'MCQ010', 'MCQ220')
+)
+
+
+# Check for missing values in the dataset
+missing_summary <- sapply(fracture, function(x) sum(is.na(x)))
+print(missing_summary)
+
+# str(fracture$)
+
+continuous_features2 <- c('LBDFOTSI', 'LBXSAPSI', 'LBDSPHSI', 'LBDSCASI', 
+                          'LBDBPBSI', 'LBDBCDSI', 'LBDTHGSI', 'LBDBSESI', 
+                          'LBDBMNSI')
+
+
+cor_matrix <- cor(fracture[, continuous_features2], use = "complete.obs")
+print(cor_matrix)
+# no significant correlation
+
+
+
+
+library(psych)
+library(GGally)
+
+### IMPUTE
+library(mice)
+
+# Define the continuous features
+ 
+
+fracture_group2 <- fracture %>%
+  select(LBDFOTSI, LBXSAPSI, LBDSPHSI, LBDSCASI, 
+         LBDBPBSI, LBDBCDSI, LBDTHGSI, LBDBSESI, LBDBMNSI)
+
+# Perform multiple imputation
+imputed_data_g2 <- mice(fracture_group2, method = 'pmm', m = 5, maxit = 5, seed = 301)
+
+# Choose the first imputed dataset
+complete_data_g2 <- complete(imputed_data_g2, 1)
+
+
+
+
+##### T-TEST FOR NUMERICAL VARIABLES IN GROUP 2 #####
+# Continuous feature analysis using t-test
+continuous_features2 <- c('LBDFOTSI', 'LBXSAPSI', 'LBDSPHSI', 'LBDSCASI', 
+                          'LBDBPBSI', 'LBDBCDSI', 'LBDTHGSI', 'LBDBSESI', 
+                          'LBDBMNSI') 
+
+t_test_results_2 <- lapply(continuous_features2, function(feature) {
+  # Filter out NAs before performing the test
+  non_na_data_2 <- complete_data_g2[!is.na(complete_data_g2[[feature]]), ]
+  t_test_2 <- t.test(non_na_data_2[[feature]] ~ fracture$hx_fracture[!is.na(complete_data_g2[[feature]])])
+  return(data.frame(Feature = feature, 
+                    p_value = t_test_2$p.value, 
+                    mean_non_fracture = t_test_2$estimate[1], 
+                    mean_fracture = t_test_2$estimate[2]))
+})
+
+t_test_results_df2 <- do.call(rbind, t_test_results_2)
+pander(t_test_results_df2)
+
+
+
+#### LOGISTIC REGRESSION ####
+
+# Ensure hx_fracture is included in the imputed dataset
+complete_data_g2 <- cbind(hx_fracture = fracture$hx_fracture, complete_data_g2)
+
+# Run the logistic regression model
+logit_lab <- glm(hx_fracture ~ 
+                   LBDFOTSI + 
+                   LBXSAPSI + 
+                   LBDSPHSI + 
+                   LBDSCASI + 
+                   LBDBPBSI + 
+                   LBDBCDSI + 
+                   LBDTHGSI + 
+                   LBDBSESI + 
+                   LBDBMNSI, 
+                 family = binomial, 
+                 data = complete_data_g2) 
+
+# View the summary of the logistic regression model
+summary_model2 <- summary(logit_lab)
+summary_model2
+
+
+
+
+# Exponentiating the coefficients to get odds ratios
+odds_ratios_lab <- exp(coef(logit_lab))
+
+# Calculating confidence intervals for the model
+conf_lab <- confint(logit_lab)
+
+# Exponentiate the confidence intervals to get odds ratio confidence intervals
+odds_ratios_ci_lab <- exp(conf_lab)
+
+# Combine odds ratios and confidence intervals into a data frame for better readability
+odds_ratios_summary_lab <- data.frame(
+  Odds_Ratios = odds_ratios_lab,
+  Lower_CI = odds_ratios_ci_lab[, 1],
+  Upper_CI = odds_ratios_ci_lab[, 2]
+)
+
+# Print the summary of odds ratios with confidence intervals
+print(odds_ratios_summary_lab)
+
+
+
+
+
+
+
+
+# check VIF
+library(car)
+# Calculate generalised inflation factors for predictors.
+vif(logit_lab) # no multicollinear variables, keep all variables
+
+
+
+##### Group 2 #####
+logit_lab_reduced <- glm(hx_fracture ~ 
+                           LBDTHGSI,
+                 family = binomial, 
+                 data = complete_data_g2)
+# View the summary of the logistic regression model
+summary_model23 <- summary(logit_lab_reduced)
+summary_model23
+
+# Get AIC values for both models
+aic_lab_full <- AIC(logit_lab)
+aic_lab_reduced <- AIC(logit_lab_reduced)
+
+# Display AIC values
+cat("AIC of Full Model: ", aic_lab_full, "\n")
+cat("AIC of Reduced Model: ", aic_lab_reduced, "\n")
+
+# Compare the models based on AIC
+if (aic_lab_full < aic_lab_reduced) {
+  cat("The Full Model is preferred based on AIC.\n")
+} else {
+  cat("The Reduced Model is preferred based on AIC.\n")
+}
+
+
+
+
+#### PREDICTIONS
+
+# split dataset into training and test set. Use 70%-30% split.
+# Load necessary libraries
+library(knitr)
+library(kableExtra)
+library(pROC)
+library(caret)
+
+# Set seed for reproducibility
+set.seed(301)
+
+# Split dataset into training and test set
+trainIndexlab <- createDataPartition(complete_data_g2$hx_fracture, p = 0.7, list = FALSE)
+training_lab <- complete_data_g2[trainIndexlab, ]
+test_lab <- complete_data_g2[-trainIndexlab, ]
+
+
+# Run the logistic regression model again
+logreg_group2 <- glm(hx_fracture ~ 
+                   LBDTHGSI, 
+                 family = binomial, 
+                 data = training_lab) 
+
+# View the summary of the logistic regression model
+summary_model2 <- summary(logreg_group2)
+summary_model2
+
+# Load necessary libraries
+library(knitr)
+library(kableExtra)
+library(pROC)  # For AUC calculation
+library(caret)
+
+# use the predict function to get predicted probabilities
+predicted_probabilities_lab <- predict(logreg_group2, newdata = test_lab, type = "response")
+
+# create a ROC curve
+roc_lab <- roc(test_lab$hx_fracture, predicted_probabilities_lab)
+
+# calculate the optimal threshold using Youden's index
+optimal_threshold_lab <- coords(roc_lab, "best", best.method = "youden")$threshold
+cat("Optimal threshold based on Youden's index:", optimal_threshold_lab, "\n")
+
+# classify using the optimal threshold
+optimal_predicted_classes_lab <- ifelse(predicted_probabilities_lab > optimal_threshold_lab, 1, 0)
+
+# combine predictions with actual values for evaluation
+predictions_lab <- data.frame(Actual = test_lab$hx_fracture, 
+                             Predicted_Probability = predicted_probabilities_lab, 
+                             Predicted_Class = optimal_predicted_classes_lab)
+
+confusion_matrix_lab <- table(Actual = predictions_lab$Actual, Predicted = predictions_lab$Predicted_Class)
+print(confusion_matrix_lab)
