@@ -1,0 +1,369 @@
+# load packages
+library(car)
+library(readr)
+library(caret)
+library(PropCIs)
+library(DescTools)
+library(glm2)
+library(pander)
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(dplyr)
+
+# load data
+fracture <- read_csv("main_data.csv", show_col_types = FALSE)
+
+# define values to replace with NA
+values_to_replace <- c(".", " ", "7", "9")
+
+# convert specified columns to characters, replace values, and convert back to factors
+fracture <- fracture %>%
+  select(-SEQN) %>%  # Remove the SEQN column
+  mutate(across(c(OSQ060, OSQ080, OSQ130, OSQ150, OSQ170, OSQ200, hx_fracture, 
+                  BPQ020, BPQ080, DIQ010, MCQ160A, MCQ160B, MCQ160C, 
+                  MCQ160E, MCQ160F, MCQ160L, MCQ160M, MCQ160P, 
+                  MCQ080, MCQ010, MCQ220), 
+                ~ factor(replace(as.character(.), . %in% values_to_replace, NA)))) %>% 
+  mutate(across(c(RIAGENDR, RIDRETH3), as.factor))
+
+# replace 7777 and 9999 values as NA
+fracture <- fracture %>%
+  mutate(
+    PAD680 = ifelse(PAD680 %in% c("777", "7777", "999", "9999"), NA, PAD680),  
+    alcohol_consumed = ifelse(alcohol_consumed %in% c("777", "7777", "999", "9999"), NA, alcohol_consumed)  
+  )
+
+
+# categorising 'INDFMPIR' into income levels
+fracture$INDFMPIRbinned <- cut(fracture$INDFMPIR, 
+                               breaks = c(0, 1, 4, Inf), 
+                               labels = c('Low', 'Mid', 'High'), # Low, Middle, High
+                               right = FALSE)  # right = FALSE to make intervals [0, 1), [1, 4), [4, Inf)
+# categorising 'RIDAGEYR' into age groups
+fracture$RIDAGEYRbinned <- cut(fracture$RIDAGEYR, 
+                               breaks = c(50, 59, 69, 79, Inf), 
+                               labels = c('50-59', '60-69', '70-79', '80+'), 
+                               right = TRUE)  # right = TRUE to make intervals [50, 59], [60, 69], [70, 79], [80, Inf)
+
+# categorise BMI
+fracture$BMI <- cut(fracture$BMXBMI,
+                    breaks = c(-Inf, 18.5, 25, 30, 35, 40, Inf), 
+                    labels = c('Underweight', 'Healthy Weight', 'Overweight', 
+                               'Class 1 Obesity', 'Class 2 Obesity', 'Class 3 Obesity'))
+
+# categorise BP measurements (Systolic Blood Pressure)
+fracture$BPSYS <- cut(fracture$BPXMSYS,
+                      breaks = c(-Inf, 120, 130, Inf), 
+                      labels = c('Normal', 'Elevated', 'High Blood Pressure'))
+
+
+# define groups of numerical features
+groups <- list(
+  "Group 1: Interview" = c('alcohol_consumed', 'PAD680', 'cigarettes_smoked'), 
+  "Group 2: Laboratory" = c('LBDFOTSI', 'LBXSAPSI', 'LBDSPHSI', 'LBDSCASI',
+                            'LBDBPBSI', 'LBDBCDSI', 'LBDTHGSI', 'LBDBSESI', 'LBDBMNSI'),  
+  "Group 3: Bone Mineral Density" = c('DXXOFBMD', 'DXXNKBMD', 'DXXTRBMD', 'DXXINBMD',
+                                      'DXXWDBMD', 'DXXOSBMD', 'DXXL1BMD', 'DXXL2BMD', 
+                                      'DXXL3BMD', 'DXXL4BMD')  
+)
+
+groups_cat <- list(
+  "Group 1: Interview" = c('RIDAGEYRbinned', 'RIAGENDR', 'RIDRETH3', 'INDFMPIRbinned', 'BMI', 'BPSYS',
+                           'OSQ060', 'OSQ080', 'OSQ130', 'OSQ150', 'OSQ170', 'OSQ200', 'hx_fracture', 
+                           'BPQ020', 'BPQ080', 'DIQ010', 'MCQ160A', 'MCQ160B', 'MCQ160C', 
+                           'MCQ160E', 'MCQ160F', 'MCQ160L', 'MCQ160M', 'MCQ160P', 
+                           'MCQ080', 'MCQ010', 'MCQ220')
+)
+
+
+# check for missing values in the dataset
+missing_summary <- sapply(fracture, function(x) sum(is.na(x)))
+print(missing_summary)
+
+
+### Group 1 IMPUTE HERE ###
+
+library(mice)
+
+fracture_group1 <- fracture %>%
+  select(RIDAGEYRbinned, RIAGENDR, RIDRETH3, INDFMPIRbinned, BMI, BPSYS, 
+         OSQ060, OSQ080, OSQ130, OSQ150, OSQ170, OSQ200, 
+         BPQ020, BPQ080, DIQ010, MCQ160A, MCQ160B, MCQ160C, 
+         MCQ160E, MCQ160F, MCQ160L, MCQ160M, MCQ160P, 
+         MCQ080, MCQ010, MCQ220, alcohol_consumed, PAD680, cigarettes_smoked)
+
+# perform multiple imputation
+imputed_data_g1 <- mice(fracture_group1, method = 'pmm', m = 5, maxit = 5, seed = 301)
+
+# diagnostic plot to check convergence
+plot(imputed_data_g1)
+
+# choose the first imputed dataset
+complete_data_g1 <- complete(imputed_data_g1, 1)
+
+
+
+# Load necessary libraries
+library(psych)
+library(GGally)
+library(broom)
+library(officer)
+
+
+
+##### T-TEST FOR NUMERICAL VARIABLES IN GROUP 1 #####
+# Add hx_fracture column from fracture dataset to complete_data_g1
+complete_data_g1$hx_fracture <- fracture$hx_fracture
+
+# Define continuous features for t-test
+continuous_features <- c('alcohol_consumed', 'PAD680', 'cigarettes_smoked')
+
+# Perform t-test for each feature
+t_test_results_1 <- lapply(continuous_features, function(feature) {
+  # Filter out NAs before performing the test
+  non_na_data_1 <- complete_data_g1[!is.na(complete_data_g1[[feature]]), ]
+  
+  # Perform t-test
+  t_test_1 <- t.test(non_na_data_1[[feature]] ~ non_na_data_1$hx_fracture)
+  
+  # Return results in a data frame
+  return(data.frame(Feature = feature, 
+                    p_value = t_test_1$p.value, 
+                    mean_non_fracture = t_test_1$estimate[1], 
+                    mean_fracture = t_test_1$estimate[2]))
+})
+
+# Combine the results into a data frame
+t_test_results_df1 <- do.call(rbind, t_test_results_1)
+
+# Display the results using pander
+pander(t_test_results_df1)
+
+
+
+##### CORRELATION ANALYSIS FOR CONTINUOUS VARIABLES #####
+
+correlation_data <- complete_data_g1[ , continuous_features]
+
+# calculate the correlation matrix
+correlation_matrix <- cor(correlation_data, use = "complete.obs")
+# convert to a DataFrame 
+correlation_df <- as.data.frame(as.table(correlation_matrix))
+# rename columns for clarity
+colnames(correlation_df) <- c("Feature1", "Feature2", "Correlation")
+# display the correlation results
+print(correlation_df)
+
+# visualizing the correlation matrix with a heatmap
+library(reshape2)
+# melt the correlation matrix for ggplot
+correlation_melted <- melt(correlation_matrix)
+# create a heatmap
+ggplot(data = correlation_melted, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1, 1), name="Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Correlation Heatmap of Continuous Features")
+
+
+
+##### CHI-SQUARE FOR CATEGORICAL VARIABLES IN GROUP 1 #####
+# categorical feature analysis using chi-square test
+categorical_features <- c('RIDAGEYRbinned', 'RIAGENDR', 'RIDRETH3', 'INDFMPIRbinned', 'BMI', 'BPSYS', 
+                          'OSQ060', 'OSQ080', 'OSQ130', 'OSQ150', 'OSQ170', 'OSQ200', 
+                          'BPQ020', 'BPQ080', 'DIQ010', 'MCQ160A', 'MCQ160B', 'MCQ160C', 
+                          'MCQ160E', 'MCQ160F', 'MCQ160L', 'MCQ160M', 'MCQ160P', 'MCQ080', 'MCQ010', 'MCQ220')
+
+# perform chi-square tests
+chi_square_results <- lapply(categorical_features, function(feature) {
+  contingency_table <- table(complete_data_g1[[feature]], complete_data_g1$hx_fracture)
+  
+  # check if the table has sufficient data and dimensions are correct
+  if(all(dim(contingency_table) > 1)) {
+    chi_square <- chisq.test(contingency_table, correct = FALSE)
+    return(data.frame(Feature = feature, p_value = chi_square$p.value, chi_square_statistic = chi_square$statistic))
+  } else {
+    # Return NA for insufficient data
+    return(data.frame(Feature = feature, p_value = NA, chi_square_statistic = NA))
+  }
+})
+
+chi_square_results_df <- do.call(rbind, chi_square_results)
+pander(chi_square_results_df)
+chi_square_results_df
+
+
+# filter for p-values less than 0.05
+significant_results_df <- chi_square_results_df[chi_square_results_df$p_value < 0.05, ]
+# print significant results
+significant_results_df
+
+
+
+#### LOGISTIC REGRESSION ####
+
+##### ANOVA Group 1 #####
+# logistic regression
+logit_int <- glm(hx_fracture ~ 
+                   (RIDAGEYRbinned * RIAGENDR) +
+                   RIDRETH3 + INDFMPIRbinned +
+                   alcohol_consumed + PAD680 +
+                   cigarettes_smoked +
+                   BMI +
+                   BPSYS +
+                   RIAGENDR * (OSQ060 + OSQ080) + 
+                     OSQ130 + 
+                     OSQ150 + 
+                     OSQ170 + 
+                     OSQ200 + 
+                     BPQ020 + 
+                     BPQ080 + 
+                     DIQ010 + 
+                     MCQ160A + 
+                     MCQ160B + 
+                     MCQ160C + 
+                     MCQ160E + 
+                     MCQ160F + 
+                     MCQ160L + 
+                     MCQ160M + 
+                     MCQ160P + 
+                     MCQ080 + 
+                     MCQ010 + 
+                     MCQ220,
+                   family = binomial, 
+                   data = complete_data_g1)
+
+# view the summary of the logistic regression model
+summary_model <- summary(logit_int)
+summary_model
+
+print(summary_model$coefficients)
+
+library(flextable)
+# extract the coefficients and convert to data.frame
+logreg_df <- as.data.frame(summary_model$coefficients)
+
+# add meaningful column names if needed (e.g., for a logistic regression)
+names(logreg_df) <- c("Estimate", "Std. Error", "z value", "Pr(>|z|)")
+
+
+#### OBTAIN ODDS RATIO and CIs
+# exponentiating the coefficients to get odds ratios
+odds_ratios_int <- exp(coef(logit_int))
+# calculating confidence intervals for the model
+conf_int <- confint(logit_int)
+# exponentiate the confidence intervals to get odds ratio confidence intervals
+odds_ratios_ci <- exp(conf_int)
+# combine odds ratios and confidence intervals into a data frame
+odds_ratios_summary <- data.frame(
+  Odds_Ratios = odds_ratios_int,
+  Lower_CI = odds_ratios_ci[, 1],
+  Upper_CI = odds_ratios_ci[, 2]
+)
+# print the summary of odds ratios with confidence intervals
+print(odds_ratios_summary)
+
+
+
+library(car)
+# check VIF
+# calculate generalised inflation factors for predictors.
+vif(logit_int)
+
+
+
+# logistic regression reduced model (ie. statistically significant features)
+logit_int_reduced <- glm(hx_fracture ~ 
+                           (RIDAGEYRbinned * RIAGENDR) +
+                           RIDRETH3 +
+                           alcohol_consumed +
+                           RIAGENDR * (OSQ060 + OSQ080) + 
+                           MCQ160F + 
+                           MCQ010, 
+                         family = binomial, 
+                         data = complete_data_g1)
+
+# view the summary of the logistic regression model
+summary_model2 <- summary(logit_int_reduced)
+summary_model2
+
+dim(fracture)
+
+
+#### MODEL COMPARISON full vs reduced
+
+# get AIC values for both models
+aic_int_full <- AIC(logit_int)
+aic_int_reduced <- AIC(logit_int_reduced)
+
+# display AIC values
+cat("AIC of Full Model: ", aic_int_full, "\n")
+cat("AIC of Reduced Model: ", aic_int_reduced, "\n")
+
+# compare the models based on AIC
+if (aic_int_full < aic_int_reduced) {
+  cat("The Full Model is preferred based on AIC.\n")
+} else {
+  cat("The Reduced Model is preferred based on AIC.\n")
+}
+
+
+
+##### Prediction
+
+# Load necessary libraries
+library(knitr)
+library(kableExtra)
+library(pROC)
+library(caret)
+
+# set seed for reproducibility
+set.seed(301)
+
+# split dataset into training and test set
+trainIndex1 <- createDataPartition(complete_data_g1$hx_fracture, p = 0.7, list = FALSE)
+training_int <- complete_data_g1[trainIndex1, ]
+test_int <- complete_data_g1[-trainIndex1, ]
+
+# fit a logistic regression model (ie significant features and interactions)
+logreg_group1 <- glm(hx_fracture ~ 
+                       (RIDAGEYRbinned * RIAGENDR) +
+                       RIDRETH3 +
+                       alcohol_consumed +
+                       RIAGENDR * (OSQ060 + OSQ080) + 
+                       MCQ160F + 
+                       MCQ010, 
+                     family = binomial, 
+                     data = training_int)
+
+summary(logreg_group1)
+
+
+# get predicted probabilities using predict function
+predicted_probabilities_int <- predict(logreg_group1, newdata = test_int, type = "response")
+
+# create a ROC curve
+roc_int <- roc(test_int$hx_fracture, predicted_probabilities_int)
+
+# calculate the optimal threshold using Youden's index
+optimal_threshold_int <- coords(roc_int, "best", best.method = "youden")$threshold
+cat("Optimal threshold based on Youden's index:", optimal_threshold_int, "\n")
+
+# classify using the optimal threshold
+optimal_predicted_classes_int <- ifelse(predicted_probabilities_int > optimal_threshold_int, 1, 0)
+
+# combine predictions with actual values for evaluation
+predictions_int <- data.frame(Actual = test_int$hx_fracture, 
+                              Predicted_Probability = predicted_probabilities_int, 
+                              Predicted_Class = optimal_predicted_classes_int)
+
+# print the predictions data frame
+kable(predictions_int, caption = "Predictions Summary") %>%
+  kable_styling(full_width = F, position = "left")
+
+# evaluate the model's performance
+confusion_matrix_int <- table(Actual = predictions_int$Actual, Predicted = predictions_int$Predicted_Class)
+print(confusion_matrix_int)
