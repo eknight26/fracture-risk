@@ -1,0 +1,388 @@
+# load packages
+library(car)
+library(readr)
+library(caret)
+library(PropCIs)
+library(DescTools)
+library(glm2)
+library(pander)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+# load data
+fracture <- read_csv("main_data.csv", show_col_types = FALSE)
+ward_t_score <- read_csv("dexa_t_scores.csv", show_col_types = FALSE)
+
+fracture_t_score <- fracture %>%
+  left_join(ward_t_score, by = join_by(SEQN))
+
+# Define values to replace with NA
+values_to_replace <- c(".", " ", "7", "9")
+
+# Convert specified columns to characters, replace values, and convert back to factors
+fracture_t_score <- fracture_t_score %>%
+  select(-SEQN) %>%  # Remove the SEQN column
+  mutate(across(c(OSQ060, OSQ080, OSQ130, OSQ150, OSQ170, OSQ200, hx_fracture, 
+                  BPQ020, BPQ080, DIQ010, MCQ160A, MCQ160B, MCQ160C, 
+                  MCQ160E, MCQ160F, MCQ160L, MCQ160M, MCQ160P, 
+                  MCQ080, MCQ010, MCQ220), 
+                ~ factor(replace(as.character(.), . %in% values_to_replace, NA)))) %>% 
+  mutate(across(c(RIAGENDR, RIDRETH3), as.factor))
+
+# replace 7777 and 9999 values as NA
+fracture_t_score <- fracture_t_score %>%
+  mutate(
+    PAD680 = ifelse(PAD680 %in% c("777", "7777", "999", "9999"), NA, PAD680),  
+    alcohol_consumed = ifelse(alcohol_consumed %in% c("777", "7777", "999", "9999"), NA, alcohol_consumed)  
+  )
+
+
+# Categorising 'INDFMPIR' into income levels
+fracture_t_score$INDFMPIRbinned <- cut(fracture_t_score$INDFMPIR, 
+                               breaks = c(0, 1, 4, Inf), 
+                               labels = c('Low', 'Mid', 'High'), # Low, Middle, High
+                               right = FALSE)  # right = FALSE to make intervals [0, 1), [1, 4), [4, Inf)
+# Categorising 'RIDAGEYR' into age groups
+fracture_t_score$RIDAGEYRbinned <- cut(fracture_t_score$RIDAGEYR, 
+                               breaks = c(50, 59, 69, 79, Inf), 
+                               labels = c('50-59', '60-69', '70-79', '80+'), # 50-59, 60-69, 70-79, 80+
+                               right = TRUE)  # right = TRUE to make intervals [50, 59], [60, 69], [70, 79], [80, Inf)
+
+# Categorize BMI
+fracture_t_score$BMI <- cut(fracture_t_score$BMXBMI,
+                    breaks = c(-Inf, 18.5, 25, 30, 35, 40, Inf), 
+                    labels = c('Underweight', 'Healthy Weight', 'Overweight', 
+                               'Class 1 Obesity', 'Class 2 Obesity', 'Class 3 Obesity'))
+
+# Categorize BP measurements (Systolic Blood Pressure)
+fracture_t_score$BPSYS <- cut(fracture_t_score$BPXMSYS,
+                      breaks = c(-Inf, 120, 130, Inf), 
+                      labels = c('Normal', 'Elevated', 'High Blood Pressure'))
+
+# catgeorise BMD into normal, low bone mass (osteopenia), osteoporosis
+fracture_t_score$T_score_WDBMD_category <- cut(fracture_t_score$T_score_WDBMD, 
+                                               breaks = c(-Inf, -2.5, -1, Inf),   
+                                               labels = c("Osteoporosis", "Low Bone Mass", "Normal"),  
+                                               right = FALSE
+)
+
+
+# # Print the table to check the result
+table(fracture_t_score$T_score_WDBMD_category)
+
+
+
+
+# Define groups of numerical features
+groups <- list(
+  "Group 1: Interview" = c('alcohol_consumed', 'PAD680', 'cigarettes_smoked'), 
+  "Group 2: Laboratory" = c('LBDFOTSI', 'LBXSAPSI', 'LBDSPHSI', 'LBDSCASI',
+                            'LBDBPBSI', 'LBDBCDSI', 'LBDTHGSI', 'LBDBSESI', 'LBDBMNSI'),  
+  "Group 3: Bone Mineral Density" = c('DXXOFBMD', 'DXXNKBMD', 'DXXTRBMD', 'DXXINBMD',
+                                      'DXXWDBMD', 'DXXOSBMD', 'DXXL1BMD', 'DXXL2BMD', 
+                                      'DXXL3BMD', 'DXXL4BMD')  
+)
+
+groups_cat <- list(
+  "Group 1: Interview" = c('RIDAGEYRbinned', 'RIAGENDR', 'RIDRETH3', 'INDFMPIRbinned', 'BMI', 'BPSYS',
+                           'OSQ060', 'OSQ080', 'OSQ130', 'OSQ150', 'OSQ170', 'OSQ200', 'hx_fracture', 
+                           'BPQ020', 'BPQ080', 'DIQ010', 'MCQ160A', 'MCQ160B', 'MCQ160C', 
+                           'MCQ160E', 'MCQ160F', 'MCQ160L', 'MCQ160M', 'MCQ160P', 
+                           'MCQ080', 'MCQ010', 'MCQ220')
+)
+
+
+# Check for missing values in the dataset
+missing_summary <- sapply(fracture_t_score, function(x) sum(is.na(x)))
+print(missing_summary)
+
+
+continuous_features3 <- c('DXXOFBMD', 'DXXNKBMD', 'DXXINBMD', 'DXXWDBMD', 'DXXL1BMD', 'DXXL2BMD')
+
+cor_matrix <- cor(fracture_t_score[, continuous_features3], use = "complete.obs")
+print(cor_matrix)
+
+
+## CORR ##
+# Load caret package
+library(caret)
+# Identify features with high correlation (threshold of 0.85)
+high_correlation <- findCorrelation(cor_matrix, cutoff = 0.90)
+# Select remaining features
+selected_features_findcorr <- continuous_features3[-high_correlation]
+print(selected_features_findcorr)
+
+
+
+## LASSO ##
+library(glmnet)
+# Remove rows with missing values
+fracture_clean <- na.omit(fracture_t_score[, c(continuous_features3, "hx_fracture")])
+# Convert to matrix
+x_clean <- as.matrix(fracture_clean[, continuous_features3])
+y_clean <- fracture_clean$hx_fracture
+lasso_model <- cv.glmnet(x_clean, y_clean, family = "binomial", alpha = 1)
+# Get the selected features
+selected_features_lasso <- coef(lasso_model, s = "lambda.min")
+print(selected_features_lasso)
+
+# Convert the sparse matrix to a regular matrix and get the non-zero coefficients
+lasso_coefficients <- as.matrix(selected_features_lasso)
+# Get the indices of the non-zero coefficients, excluding the intercept (the first coefficient)
+non_zero_indices <- which(lasso_coefficients != 0)[-1]
+# Extract the corresponding feature names
+selected_features <- rownames(lasso_coefficients)[non_zero_indices]
+print(selected_features) # only Ward's Triangle BMD is selected
+
+
+#### visualise LASSO ####
+
+# Plot the cross-validation curve (MSE vs lambda)
+plot(lasso_model)
+
+# Plot the coefficient shrinkage paths without labels
+plot(lasso_model$glmnet.fit, xvar = "lambda", label = FALSE, col = gray.colors(ncol(lasso_model$glmnet.fit$beta)))
+
+# Extract the coefficients for the best lambda (lambda.min)
+lasso_coefs <- coef(lasso_model, s = "lambda.min")
+
+# Find the feature with the largest non-zero coefficient (excluding the intercept)
+best_feature_idx <- which.max(abs(lasso_coefs[-1])) + 1  # Add 1 to account for intercept
+best_feature_name <- rownames(lasso_coefs)[best_feature_idx]
+best_feature_coef <- lasso_coefs[best_feature_idx]
+
+# # Add a title and axis labels
+# title(main = "LASSO Coefficient Shrinkage Paths with Best Feature", 
+#       xlab = "Log(lambda)", 
+#       ylab = "Coefficients")
+
+# Add text for the best feature
+text(
+  x = log(lasso_model$lambda.min), 
+  y = best_feature_coef, 
+  labels = best_feature_name, 
+  pos = 4, cex = 0.7, col = "black"
+)
+
+
+
+
+library(psych)
+library(GGally)
+
+### IMPUTE
+library(mice)
+
+# Define the continuous features
+
+
+fracture_group3 <- fracture_t_score %>%
+  select(DXXWDBMD, T_score_WDBMD, T_score_WDBMD_category)
+
+
+# Perform multiple imputation
+imputed_data_g3 <- mice(fracture_group3, method = 'pmm', m = 5, maxit = 5, seed = 301)
+
+# Choose the first imputed dataset
+complete_data_g3 <- complete(imputed_data_g3, 1)
+# Ensure hx_fracture is included in the imputed dataset
+complete_data_g3 <- cbind(hx_fracture = fracture$hx_fracture, complete_data_g3)
+
+
+
+##### T-TEST FOR NUMERICAL VARIABLES IN GROUP 3 #####
+# Continuous feature analysis using t-test
+selected_features3 <- c('DXXWDBMD', 'T_score_WDBMD') 
+
+# Perform t-tests for the selected features
+t_test_results_3 <- lapply(selected_features3, function(feature) {
+  t_test_3 <- t.test(complete_data_g3[[feature]] ~ complete_data_g3$hx_fracture)
+  return(data.frame(Feature = feature, 
+                    p_value = t_test_3$p.value, 
+                    mean_non_fracture = t_test_3$estimate[1],  # Corrected column name
+                    mean_fracture = t_test_3$estimate[2]))
+})
+
+# Combine results into a single data frame
+t_test_results_df3 <- do.call(rbind, t_test_results_3)
+
+# Print results using pander
+pander(t_test_results_df3)
+
+
+
+
+
+#### LOGISTIC REGRESSION ####
+
+##### Group 3 #####
+logit_bmd <- glm(hx_fracture ~ 
+                   DXXWDBMD +
+                   T_score_WDBMD +
+                   T_score_WDBMD_category,
+                 family = binomial, 
+                 data = complete_data_g3)
+# View the summary of the logistic regression model
+summary_model3 <- summary(logit_bmd)
+summary_model3
+
+
+
+
+# Exponentiating the coefficients to get odds ratios
+odds_ratios_bmd <- exp(coef(logit_bmd))
+
+# Calculating confidence intervals for the model
+conf_bmd <- confint(logit_bmd)
+
+# Exponentiate the confidence intervals to get odds ratio confidence intervals
+odds_ratios_ci_bmd <- exp(conf_bmd)
+
+# Combine odds ratios and confidence intervals into a data frame for better readability
+odds_ratios_summary_bmd <- data.frame(
+  Odds_Ratios = odds_ratios_bmd,
+  Lower_CI = odds_ratios_ci_bmd[, 1],
+  Upper_CI = odds_ratios_ci_bmd[, 2]
+)
+
+odds_ratios_summary_bmd
+
+
+
+# reduced model
+logit_bmd_reduced <- glm(hx_fracture ~ 
+                   T_score_WDBMD+
+                     T_score_WDBMD_category, 
+                 family = binomial, 
+                 data = complete_data_g3)
+# View the summary of the logistic regression model
+summary_model4 <- summary(logit_bmd_reduced)
+summary_model4
+
+
+# Exponentiating the coefficients to get odds ratios
+odds_ratios_bmd_ <- exp(coef(logit_bmd_reduced))
+
+# Calculating confidence intervals for the model
+conf_bmd_ <- confint(logit_bmd_reduced)
+
+# Exponentiate the confidence intervals to get odds ratio confidence intervals
+odds_ratios_ci_bmd_ <- exp(conf_bmd_)
+
+# Combine odds ratios and confidence intervals into a data frame for better readability
+odds_ratios_summary_bmd_ <- data.frame(
+  Odds_Ratios = odds_ratios_bmd_,
+  Lower_CI = odds_ratios_ci_bmd_[, 1],
+  Upper_CI = odds_ratios_ci_bmd_[, 2]
+)
+
+odds_ratios_summary_bmd_
+
+
+
+# Get AIC values for both models
+aic_bmd_full <- AIC(logit_bmd)
+aic_bmd_reduced <- AIC(logit_bmd_reduced)
+
+# Display AIC values
+cat("AIC of Full Model: ", aic_bmd_full, "\n")
+cat("AIC of Reduced Model: ", aic_bmd_reduced, "\n")
+
+# Compare the models based on AIC
+if (aic_bmd_full < aic_bmd_reduced) {
+  cat("The Full Model is preferred based on AIC.\n")
+} else {
+  cat("The Reduced Model is preferred based on AIC.\n")
+}
+
+
+
+
+
+#### PREDICTIONS
+
+# split dataset into training and test set. Use 70%-30% split.
+library(knitr)
+library(kableExtra)
+library(pROC)
+library(caret)
+
+# Set seed for reproducibility
+set.seed(301)
+
+# Split dataset into training and test set
+trainIndex3 <- createDataPartition(complete_data_g3$hx_fracture, p = 0.7, list = FALSE)
+training_bmd <- complete_data_g3[trainIndex3, ]
+test_bmd <- complete_data_g3[-trainIndex3, ]
+
+
+# Run the logistic regression model again
+logreg_group3 <- glm(hx_fracture ~ 
+                       T_score_WDBMD,
+                     family = binomial, 
+                     data = training_bmd) 
+
+# View the summary of the logistic regression model
+summary_model3 <- summary(logreg_group3)
+summary_model3
+
+# Load necessary libraries
+library(knitr)
+library(kableExtra)
+library(pROC)  # For AUC calculation
+library(caret)
+
+# Step 1: Prepare the test dataset (already done with training_int and test_int)
+
+# Step 2: Use the predict function to get predicted probabilities
+predicted_probabilities_bmd <- predict(logreg_group3, newdata = test_bmd, type = "response")
+
+# Step 2: Create a ROC curve
+roc_bmd <- roc(test_bmd$hx_fracture, predicted_probabilities_bmd)
+
+# Step 4: Calculate the optimal threshold using Youden's index
+optimal_threshold_bmd <- coords(roc_bmd, "best", best.method = "youden")$threshold
+cat("Optimal threshold based on Youden's index:", optimal_threshold_bmd, "\n")
+
+# Step 5: Classify using the optimal threshold
+optimal_predicted_classes_bmd <- ifelse(predicted_probabilities_bmd > optimal_threshold_bmd, 1, 0)
+
+# Step 6: Combine predictions with actual values for evaluation
+predictions_bmd <- data.frame(Actual = test_bmd$hx_fracture, 
+                             Predicted_Probability = predicted_probabilities_bmd, 
+                             Predicted_Class = optimal_predicted_classes_bmd)
+
+confusion_matrix_bmd <- table(Actual = predictions_bmd$Actual, Predicted = predictions_bmd$Predicted_Class)
+print(confusion_matrix_bmd)
+
+# Ensure Actual and Predicted_Class are factors with the same levels
+predictions_bmd$Actual <- factor(predictions_bmd$Actual, levels = c(0, 1))
+predictions_bmd$Predicted_Class <- factor(predictions_bmd$Predicted_Class, levels = c(0, 1))
+
+# Step 8: Calculate metrics using the new predictions
+accuracy_bmd <- sum(predictions_bmd$Actual == predictions_bmd$Predicted_Class) / nrow(predictions_bmd)
+precision_bmd <- posPredValue(predictions_bmd$Actual, predictions_bmd$Predicted_Class, positive = "1")
+recall_bmd <- sensitivity(predictions_bmd$Actual, predictions_bmd$Predicted_Class, positive = "1")  
+specificity_bmd <- specificity(predictions_bmd$Actual, predictions_bmd$Predicted_Class, positive = "0")
+
+# Calculate F1 Score
+f1_score_bmd <- (2 * precision_bmd * recall_bmd) / (precision_bmd + recall_bmd)
+
+# Calculate F2 Score
+beta <- 2  # Weighting factor for F2 score
+f2_score_bmd <- (1 + beta^2) * (precision_bmd * recall_bmd) / ((beta^2 * precision_bmd) + recall_bmd)
+
+# Calculate AUC
+auc_value_bmd <- auc(roc_bmd)
+
+# Create a summary table of metrics
+metrics_bmd <- data.frame(
+  Metric = c("Accuracy", "Precision", "Recall", "Specificity", "F2 Score", "AUC"),
+  Value = c(accuracy_bmd, precision_bmd, recall_bmd, specificity_bmd, f2_score_bmd, auc_value_bmd)
+)
+
+# Print the metrics table using kable for better presentation
+kable(metrics_bmd, caption = "Model Performance Metrics with Optimal Threshold") %>%
+  kable_styling(full_width = F, position = "left")
+
