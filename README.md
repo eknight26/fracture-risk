@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Fracture Risk Prediction — NHANES 2017–2020
 
 > A machine learning pipeline to predict history of osteoporotic fracture using
@@ -152,3 +153,9 @@ Specialisation: Clinical data analytics, population health, musculoskeletal cond
 
 This project is licensed under the MIT License. NHANES data is public domain
 (CDC/NCHS). See [NHANES Data Use Agreement](https://www.cdc.gov/nchs/nhanes/about_nhanes.htm).
+=======
+# fracture-risk
+
+This project aims to analyse the factors in predicting fractures in elderly using CDC's NHANES Dataset 2017-2020.
+Demographic, biochemical (laboratory results) and bone mineral density factors were investigated.
+>>>>>>> 65ca60e56d4453887ad3453480e6317b1ce7c0b5
