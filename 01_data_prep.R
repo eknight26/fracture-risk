@@ -317,6 +317,8 @@ main_data <- reduce(supplementary, ~left_join(.x, .y, by = "SEQN"),
 
 cat("Dataset dimensions after merge:", dim(main_data), "\n")
 
+# Risk factors source: https://pmc.ncbi.nlm.nih.gov/articles/PMC4917635/
+
 
 # ----------------------------------------
 # SECTION 3: RECODE SPECIAL VALUES TO NA
