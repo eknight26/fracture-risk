@@ -1,0 +1,30 @@
+# =============================================================================
+# .gitignore for R / NHANES Data Science Project
+# =============================================================================
+
+# --- Raw Data (too large for GitHub; NHANES XPT files) ---
+data/raw/
+*.XPT
+*.xpt
+
+# --- R specific ---
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+
+# --- R Markdown / Quarto build artefacts ---
+*_cache/
+*_files/
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+
+# --- Sensitive or large processed files (optional) ---
+# Uncomment if you don't want to commit processed CSVs either:
+# data/processed/
+
+# --- Packrat / renv (dependency management) ---
+packrat/lib*/
+renv/library/
