@@ -1,29 +1,19 @@
-<<<<<<< HEAD
 # Fracture Risk Prediction — NHANES 2017–2020
 
-> A machine learning pipeline to predict history of osteoporotic fracture using
-> population-level survey and clinical data, developed with 15 years of nursing
-> experience informing feature selection and clinical interpretation.
-
----
+> A machine learning pipeline to predict history of fracture using population-level survey and clinical data, and performing feature selection and clinical interpretation.
 
 ## Background
 
-Osteoporotic fractures — particularly at the hip, spine, and wrist — are a
-leading cause of disability and mortality in older adults. Early identification
-of at-risk individuals is clinically critical, yet many risk factors beyond bone
-mineral density (BMD) remain underutilised in practice.
+Osteoporotic fractures — particularly at the hip, spine, and wrist — are a leading cause of disability and mortality in older adults. 
+Early identification of at-risk individuals is clinically critical, yet many risk factors beyond bone mineral density (BMD) remain underutilised in practice.
 
-This project uses the **NHANES 2017–2020 pre-pandemic dataset** to build a
-classification model predicting history of fracture, incorporating:
+This project uses the **NHANES 2017–2020 pre-pandemic dataset** to build a classification model predicting history of fracture, incorporating:
 
 - Dual-energy X-ray absorptiometry (DEXA) bone mineral density
 - WHO-standard T-scores (femur neck and Ward's Triangle)
 - Biochemical markers (calcium, phosphate, ALP, heavy metals)
 - Lifestyle factors (smoking, alcohol, sedentary behaviour)
 - Comorbidities (diabetes, hypertension, arthritis, COPD)
-
----
 
 ## Project Structure
 
@@ -44,7 +34,6 @@ fracture-risk-nhanes/
 └── README.md
 ```
 
----
 
 ## Data Source
 
@@ -54,14 +43,7 @@ Examination Survey (NHANES)**:
 - **Study cohort:** [NHANES 2017–March 2020 Pre-Pandemic](https://wwwn.cdc.gov/nchs/nhanes/continuousnhanes/default.aspx?Cycle=2017-2020)
 - **T-score reference group:** [NHANES 2009–2010 (Cycle F)](https://wwwn.cdc.gov/nchs/nhanes/continuousnhanes/default.aspx?BeginYear=2009)
 
-Raw `.XPT` files are **not tracked in this repository** due to size. To
-reproduce the analysis:
-
-1. Download the relevant `.XPT` files from the NHANES website (links above)
-2. Place them in `data/raw/`
-3. Run scripts in numbered order
-
----
+Raw `.XPT` files are **not tracked in this repository** due to size. 
 
 ## NHANES Modules Used
 
@@ -83,7 +65,6 @@ reproduce the analysis:
 | Physical Activity | `P_PAQ.XPT` | Sedentary minutes per day |
 | Smoking | `P_SMQRTU.XPT` | Cigarettes per day (last 5 days) |
 
----
 
 ## T-Score Methodology
 
@@ -102,7 +83,6 @@ T-score = (patient BMD − young adult mean BMD) / young adult SD
 
 Stratification by race is deliberate — BMD reference ranges vary across ethnic groups and using a pooled reference would introduce systematic bias.
 
----
 
 ## How to Run
 
@@ -120,42 +100,19 @@ source("scripts/01_data_prep.R")     # Merges all modules + appends T-scores
 source("scripts/03_eda.R")           # Exploratory analysis & plots
 ```
 
----
 
 ## Clinical Notes
 
-- **Spine scan inclusion:** Invalid DEXA spine scans (`DXASPNST == 2`) were
-  retained. The primary causes — degenerative disease, scoliosis, spinal
-  fusion — are prevalent in adults 50+ and exclusion would bias the sample
-  toward healthier individuals, reducing generalisability.
+- **Spine scan inclusion:** Invalid DEXA spine scans (`DXASPNST == 2`) were retained. The primary causes — degenerative disease, scoliosis, spinal
+ fusion — are prevalent in adults 50+ and exclusion would bias the sample toward healthier individuals, reducing generalisability.
 
-- **Class imbalance:** Fracture history is present in ~15% of respondents
-  (n ≈ 726 of 4,987). Downstream modelling addresses this via SMOTE or
-  class-weight adjustment.
+- **Class imbalance:** Fracture history is present in ~15% of respondents (n ≈ 726 of 4,987). Downstream modelling addresses this via SMOTE or class-weight adjustment.
 
-- **Complex survey design:** NHANES uses a stratified, multistage probability
-  sampling design. Survey weights (`WTMECPRP`) should be applied for any
-  population-level inference.
+- **Complex survey design:** NHANES uses a stratified, multistage probability sampling design. Survey weights (`WTMECPRP`) should be applied for any population-level inference.
+Folate (`LBDFOTSI`) has it's own weigthts and should be applied specifically for this.
 
----
 
-## Author
+## Other Notes
 
-**[Your Name]**  
-Master of Data Science | Registered Nurse (15 years)  
-Specialisation: Clinical data analytics, population health, musculoskeletal conditions
-
-[LinkedIn](https://linkedin.com/in/yourprofile) · [GitHub](https://github.com/yourusername)
-
----
-
-## License
-
-This project is licensed under the MIT License. NHANES data is public domain
-(CDC/NCHS). See [NHANES Data Use Agreement](https://www.cdc.gov/nchs/nhanes/about_nhanes.htm).
-=======
-# fracture-risk
-
-This project aims to analyse the factors in predicting fractures in elderly using CDC's NHANES Dataset 2017-2020.
-Demographic, biochemical (laboratory results) and bone mineral density factors were investigated.
->>>>>>> 65ca60e56d4453887ad3453480e6317b1ce7c0b5
+NHANES data is public domain (CDC/NCHS). 
+See [NHANES Data Use Agreement](https://www.cdc.gov/nchs/nhanes/about_nhanes.htm).
