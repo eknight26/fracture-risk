@@ -408,7 +408,7 @@ na_summary %>%
   ggplot(aes(x = reorder(feature, pct_missing), y = pct_missing)) +
   geom_col(fill = "steelblue4", alpha = 0.8) +
   geom_text(aes(label = paste0(pct_missing, "%")),
-            hjust = -0.1, size = 3, colour = "black") +
+            hjust = -0.1, size = 3) +
   coord_flip() +
   labs(
     x        = NULL,
