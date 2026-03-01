@@ -1,12 +1,11 @@
-
+# ------------------------------------------------------------------------------
 # FRACTURE RISK PREDICTION - NHANES 2017-2020
-# Script 01: Data Preparation & Merging
-# Author: Ernest Caballero
-# Date: 2024
-# Description: Loads, cleans, and merges all NHANES XPT modules into a single
+# SCRIPT 01: Data Preparation & Merging
+# AUTHOR: Ernest Caballero
+# DESCRIPTION: Loads, cleans, and merges all NHANES XPT modules into a single
 # analysis-ready dataset. Target variable is history of fracture
 # at hip, wrist, or spine (hx_fracture).
-
+# -----------------------------------------------------------------------------
 
 # Clear environment and set options
 rm(list = ls())
@@ -17,11 +16,6 @@ options(scipen = 999)
 library(dplyr)
 library(survey)
 library(tidyverse)
-# library(haven)     # read XPT (SAS transport) files
-# library(janitor)   # clean_names(), tabyl()
-# library(naniar)    # missing data visualisation
-# library(pander)    # formatted table output
-# library(knitr)     # knitting reports
 
 # Handle lonely PSUs (strata with single sampling unit) after cohort subsetting
 # 'adjust' centres contribution around grand mean — standard practice for NHANES
@@ -37,7 +31,6 @@ for (p in c("base", "survey","dplyr")) {
 dir.create("outputs", showWarnings = FALSE)
 dir.create("outputs/plots", showWarnings = FALSE, recursive = TRUE)
 dir.create("data/processed", showWarnings = FALSE, recursive = TRUE)
-
 
 
 # ---------------------------------------------- 
@@ -329,16 +322,15 @@ cat("Dataset dimensions after merge:", dim(main_data), "\n")
 # Binary/categorical variables (1=yes, 2=no, 7=refused, 9=don't know)
 binary_vars <- c(
   "had_osteoporosis", "other_fractures", "prednisone",
-  "mother_fx_hip", "father_fx_hip",
-  "high_bp", "high_choles", "diabetes_status",
-  "arthritis", "chf", "chd", "heart_attack", "stroke",
-  "liver", "thyroid", "copd", "overweight", "asthma", "cancer"
-)
+  "mother_fx_hip", "father_fx_hip", "high_bp", "high_choles", "arthritis", 
+  "chf", "chd", "heart_attack", "stroke", "liver", "thyroid", "copd", 
+  "overweight", "asthma", "cancer")
 
 main_data <- main_data %>%
   mutate(across(all_of(binary_vars), ~na_if(., 7))) %>%   # refused
   mutate(across(all_of(binary_vars), ~na_if(., 9))) %>%   # don't know
-  # Recode binary: 1 = yes, 2 = no → convert 2 to 0 for modelling
+  
+  # Recode binary: 1 = YES, 2 = NO, convert 2 into 0 for modelling
   mutate(across(all_of(binary_vars), ~if_else(. == 2, 0L, as.integer(.))))
 
 # Continuous variables with special codes (777/7777 = refused, 999/9999 = don't know)
@@ -392,7 +384,7 @@ main_data <- main_data %>%
 
 na_summary <- main_data %>%
   summarise(across(everything(), ~sum(is.na(.)))) %>%
-  # rotates output so each column becomes its own row
+  # Pivot output
   pivot_longer(everything(), names_to = "feature", values_to = "n_missing") %>%
   # Adds new column `pct_missing` to get a percentage of missing data for each feature
   mutate(pct_missing = round(n_missing / nrow(main_data) * 100, 1)) %>%
@@ -587,8 +579,6 @@ cat("\nValues capped by winsorizing (3× IQR):\n")
 print(cap_summary, n = Inf)
 cat("Zero-bounded variables: lower fence floored at 0.\n")
 cat("Rows retained (no deletion):", nrow(main_data), "\n")
-
-
 
 
 # -----------------

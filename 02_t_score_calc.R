@@ -1,25 +1,25 @@
-
+# -----------------------------------------------------------------------------
 # FRACTURE RISK PREDICTION - NHANES 2017-2020
-# Script 02: T-Score Calculation
-# Author: Ernest Caballero
-# Date: 2024
-# Description: Calculates femur neck and Ward's Triangle T-scores for the
+# SCRIPT 02: T-Score Calculation
+# AUTHOR: Ernest Caballero
+# DESCRIPTION: Calculates femur neck and Ward's Triangle T-scores for the
 # 2017-2020 cohort (50+) using a young adult reference group
 # (NHANES 2009-2010, age 20-30), stratified by gender and race.
-
 # WHO defines T-score as: (patient BMD - young adult mean BMD) / young adult SD
-# WHO classification criteria of osteoporosis T-score: https://pmc.ncbi.nlm.nih.gov/articles/PMC10721754/
+# Classification criteria of osteoporosis T-score: 
+# https://pmc.ncbi.nlm.nih.gov/articles/PMC10721754/
 #    T-score >= -1.0            = Normal bone density
 #    -2.5 < T-score < -1.0      = Osteopenia (low bone mass)
 #    T-score   <=    -2.5       = Osteoporosis
 # Reference: https://pmc.ncbi.nlm.nih.gov/articles/PMC2827823/
+#------------------------------------------------------------------------------
 
 
 # -----------------------------------------------------------
 # SECTION 1: YOUNG ADULT REFERENCE GROUP (NHANES 2009-2010)
 # -----------------------------------------------------------
-# Reference group: age 20-30, stratified by gender (RIAGENDR) and harmonised
-# race/ethnicity. Survey weights (WTMEC2YR) applied when computing reference
+# Reference group: age 20-30, stratified by gender (`RIAGENDR`) and harmonised
+# race/ethnicity. Survey weights (`WTMEC2YR`) applied when computing reference
 # means and SDs because NHANES oversamples minorities — unweighted stats would
 # bias T-scores for all groups.
 # WTMEC2YR = MEC examination weight, correct for DEXA physical exam data.
@@ -38,6 +38,7 @@
 # Source: CDC NHANES analytic guidelines for cross-cycle comparisons
 
 
+# LIBRARIES
 library(tidyverse)
 library(survey)
 library(foreign)
@@ -233,11 +234,11 @@ t_scores <- demo_study %>%
 
 # Participant flow report
 cat("\nParticipant flow:\n")
-cat("  Study cohort (age 50+):            ", n_before_dexa, "\n")
-cat("  After DEXA join (valid scan only): ", nrow(t_scores), "\n")
-cat("  Lost (no valid DEXA):              ", n_before_dexa - nrow(t_scores), "\n")
-cat("  T-score NA (unmatched reference):  ",
-    sum(is.na(t_scores$T_score_nk)), "\n")
+cat("Study cohort (age 50+):", n_before_dexa, "\n")
+cat("After DEXA join (valid scan only):", nrow(t_scores), "\n")
+cat("Missing (no scan performed):", n_before_dexa - nrow(t_scores), "\n")
+cat("T-score NA (unmatched reference):", sum(is.na(t_scores$T_score_nk)), "\n")
+
 
 
 # ---------------------------------
@@ -253,4 +254,37 @@ print(table(t_scores$osteo_class, useNA = "ifany"))
 # Save
 write_csv(t_scores, "data/processed/dexa_t_scores.csv")
 cat("\nSaved: data/processed/dexa_t_scores.csv\n")
-cat("Script 02 complete. Run 01b_merge_and_clean.R next.\n")
+
+
+
+# ----------------------------------------
+# SECTION 5: MERGE WITH MAIN DATA & SAVE
+# ----------------------------------------
+
+main_data_clean <- read_csv("data/processed/main_data_clean.csv",
+                            show_col_types = FALSE)
+
+cat("Rows before T-score join:", nrow(main_data_clean), "\n")
+
+# Sanity check: verify all T-score SEQNs exist in main_data_clean before joining
+# If any SEQN in t_scores is not in main_data_clean, something went wrong upstream
+unmatched_seqn <- sum(!t_scores$SEQN %in% main_data_clean$SEQN)
+cat("T-score SEQNs not found in main data:", unmatched_seqn, "\n")
+
+# Merge T-scores into main dataset
+# left_join: keeps ALL participants from main dataset, including those without a valid DEXA scan. 
+# T-score columns (T_score_nk, osteo_class) will be NA for those participants — MICE will impute these alongside other missing values.
+# Stratum matching (gender & race) was already applied, so joining on SEQN alone is correct here.
+main_data_final <- main_data_clean %>%
+  left_join(t_scores, by = "SEQN")
+
+cat("Rows after T-score join:", nrow(main_data_final), "\n")
+cat("Participants missing T-score (NA):", sum(is.na(main_data_final$T_score_nk)), "\n")
+cat("Total missing values:", sum(is.na(main_data_final)), "\n")
+cat("Dimensions of the merged dataset:", dim(main_data_final), "\n")
+
+# Save
+write_csv(main_data_final, "data/processed/main_data_final.csv")
+cat("\nSaved: data/processed/main_data_final.csv\n")
+
+cat("\nScript 02 complete. Run script 03 next. \n")

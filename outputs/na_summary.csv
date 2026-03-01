@@ -43,7 +43,6 @@ heart_attack,9,0.2
 stroke,10,0.2
 liver,11,0.2
 high_bp,7,0.1
-diabetes_status,3,0.1
 overweight,7,0.1
 asthma,6,0.1
 SEQN,0,0
@@ -55,4 +54,5 @@ samp_wt_mec,0,0
 SDMVPSU,0,0
 SDMVSTRA,0,0
 hx_fracture,0,0
+diabetes_status,0,0
 cancer,2,0
