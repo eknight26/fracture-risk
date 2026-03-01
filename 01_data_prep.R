@@ -34,7 +34,7 @@ for (p in c("base", "survey","dplyr")) {
 }
 
 # Create output folders if they don't exist
-dir.create("outputs",       showWarnings = FALSE)
+dir.create("outputs", showWarnings = FALSE)
 dir.create("outputs/plots", showWarnings = FALSE, recursive = TRUE)
 dir.create("data/processed", showWarnings = FALSE, recursive = TRUE)
 
@@ -402,7 +402,7 @@ write_csv(na_summary, "outputs/na_summary.csv")
 cat("\nTop 20 features with most missing data:\n")
 print(head(na_summary, 20))
 
-# Plot missing data — only features with any missing values
+# PLOT: Visualise missing data — only features with any missing values
 na_summary %>%
   filter(pct_missing > 0) %>%
   ggplot(aes(x = reorder(feature, pct_missing), y = pct_missing)) +
@@ -422,6 +422,171 @@ na_summary %>%
   scale_y_continuous(limits = c(0, 100), expand = expansion(mult = c(0, 0.1)))
 
 ggsave("outputs/plots/01_missing_data.png", width = 10, height = 8, dpi = 300)
+
+
+
+# ---------------------------------------------------------
+# SECTION 5: OUTLIER DETECTION — NUMERICAL FEATURES & PLOT
+# ---------------------------------------------------------
+# Method: Interquartile Range (IQR) rule
+#   Lower = Q1 - 3 * IQR   (using 3× for clinical data — more conservative
+#   Upper = Q3 + 3 * IQR    than the standard 1.5×, reduces false flags)
+#
+# Decision rule: Winsorize (cap) rather than delete outliers.
+# Due to class imbalance problem (fracture cases are already the minority class), 
+# deletion of a row with an outlier  will disproportionately lose fracture cases 
+# and make the model's job even harder. Winsorizing keeps every single row — 
+# just trimming the extreme edges, not throwing data away.
+
+# Define all continuous numerical features to check
+# Excludes: binary variables, IDs, sampling weights, target, and ordinal categoricals
+continuous_vars <- c(
+  # Demographics / body measurements
+  "age", "income_ratio", "bmi", "mean_systolic", "mean_diastolic",
+  # Lifestyle
+  "alc_drinks_per_day", "cigarettes_per_day", "sedentary_mins_day",
+  # Diabetes
+  "a1c_level", "ldl_level",
+  # Bone metabolism bloods
+  "alp", "phosphate", "calcium", "serum_folate",
+  # Heavy metals
+  "blood_lead", "blood_cadmium", "blood_mercury",
+  "blood_selenium", "blood_manganese",
+  # DEXA femur BMD
+  "bmd_femur_total", "bmd_femur_neck", "bmd_femur_troch",
+  "bmd_femur_inter", "bmd_femur_ward",
+  # DEXA spine BMD
+  "bmd_spine_total", "bmd_l1", "bmd_l2", "bmd_l3", "bmd_l4"
+)
+
+# Filter to only columns that actually exist in main_data
+continuous_vars <- intersect(continuous_vars, names(main_data))
+
+# Outlier summary
+outlier_summary <- map_dfr(continuous_vars, function(var) {
+  x <- main_data[[var]]
+  x <- x[!is.na(x)]           # exclude NA — not outliers
+  q1 <- quantile(x, 0.25)
+  q3 <- quantile(x, 0.75)
+  iqr <- q3 - q1
+  lo <- q1 - 3 * iqr          # lower fence (3× IQR)
+  hi <- q3 + 3 * iqr          # upper fence (3× IQR)
+  n_lo <- sum(x < lo)         # counts how many values fall outside each fence
+  n_hi <- sum(x > hi)
+  
+  tibble(
+    Feature = var,
+    Q1 = round(q1, 3),
+    Q3 = round(q3, 3),
+    IQR = round(iqr, 3),
+    Lower_Fence = round(lo, 3),
+    Upper_Fence = round(hi, 3),
+    N_Below_Fence = n_lo,
+    N_Above_Fence = n_hi,
+    Total_Outliers = n_lo + n_hi,
+    Pct_Outliers  = round((n_lo + n_hi) / length(x) * 100, 2)
+  )
+}) %>%
+  arrange(desc(Total_Outliers))  # sorts table with the most outliers appear at the top
+
+cat("\nOutlier summary (3× IQR fences):\n")
+print(outlier_summary, n = Inf)
+
+write_csv(outlier_summary, "outputs/outlier_summary.csv")
+cat("Saved: outputs/outlier_summary.csv\n")
+
+
+# PLOT: Visualise top outlier-affected features
+top_outlier_vars <- outlier_summary %>%
+  filter(Total_Outliers > 0) %>%
+  slice_head(n = 10) %>%
+  pull(Feature)
+
+if (length(top_outlier_vars) > 0) {
+  
+  outlier_plots <- map(top_outlier_vars, function(var) {
+    ggplot(main_data, aes(y = .data[[var]])) +
+      geom_boxplot(fill = "steelblue4", alpha = 0.7,
+                   outlier.colour = "firebrick3",
+                   outlier.size   = 1.2,
+                   outlier.alpha  = 0.5) +
+      labs(title = var, x = NULL, y = NULL) +
+      theme_minimal(base_size = 10) +
+      theme(axis.text.x = element_blank(),
+            axis.ticks.x = element_blank())
+  })
+  
+  # Combine into one panel using patchwork
+  library(patchwork)
+  outlier_panel <- wrap_plots(outlier_plots, ncol = 5) +
+    plot_annotation(
+      title    = "Boxplots: Features with Most Outliers",
+      subtitle = "Remaining points beyond whiskers are within 3× IQR fences | Red = residual extremes",
+      caption  = "NHANES 2017-2020 | Outliers winsorized, not deleted",
+      theme    = theme(plot.title = element_text(face = "bold", size = 14))
+    )
+  
+  ggsave("outputs/plots/00_outlier_boxplots.png", outlier_panel,
+         width = 12, height = 8, dpi = 300)
+  cat("Saved: outputs/plots/00_outlier_boxplots.png\n")
+  
+} else {
+  cat("No outliers detected beyond 3× IQR fences.\n")
+}
+
+
+# There are several negative lower fences that are a mathematical artefact of right-skew, not real lower bounds — 
+# we need to floor them at zero before capping.
+zero_bounded_vars <- outlier_summary %>%
+  filter(Lower_Fence < 0) %>%
+  pull(Feature)
+
+# Winsorize function
+winsorize_var <- function(x, zero_bound = FALSE) {
+  q1  <- quantile(x, 0.25, na.rm = TRUE)
+  q3  <- quantile(x, 0.75, na.rm = TRUE)
+  iqr <- q3 - q1
+  lo  <- q1 - 3 * iqr
+  hi  <- q3 + 3 * iqr
+  
+  if (zero_bound) lo <- max(lo, 0)   # floor lower fence at 0 if needed
+  
+  pmin(pmax(x, lo), hi)
+}
+
+# Save a copy of the data before winsorizing
+main_data_raw <- main_data
+
+# Apply to all continuous vars — zero_bound = TRUE for zero-bounded variables
+main_data <- main_data %>%
+  mutate(
+    across(all_of(intersect(zero_bounded_vars, continuous_vars)), ~ winsorize_var(.x, zero_bound = TRUE)),
+    across(all_of(setdiff(continuous_vars, zero_bounded_vars)),   ~ winsorize_var(.x, zero_bound = FALSE))
+  )
+
+# Count how many values were actually changed by winsorizing
+cap_summary <- map_dfr(continuous_vars, function(var) {
+  before <- main_data_raw[[var]]
+  after  <- main_data[[var]]
+  
+  # A value was capped if it changed after winsorizing
+  n_capped <- sum(before != after, na.rm = TRUE)
+  
+  tibble(
+    Feature  = var,
+    N_Capped = n_capped,
+    Pct_Capped = round(n_capped / sum(!is.na(before)) * 100, 2)
+  )
+}) %>%
+  filter(N_Capped > 0) %>%
+  arrange(desc(N_Capped))
+
+cat("\nWinsorizing complete. Extreme values capped at 3× IQR fences.\n")
+cat("\nValues capped by winsorizing (3× IQR):\n")
+print(cap_summary, n = Inf)
+cat("Zero-bounded variables: lower fence floored at 0.\n")
+cat("Rows retained (no deletion):", nrow(main_data), "\n")
+
 
 
 
