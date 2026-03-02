@@ -21,7 +21,7 @@ library(mice)      # multiple imputation by chained equations (MICE)
 # SECTION 1: LOAD PROCESSED DATA
 # ---------------------------------
 
-main_data_imp <- read_csv("data/processed/main_data_final.csv",
+main_data_imp <- read_csv("data/processed/main_data_for_imputation.csv",
                           show_col_types = FALSE)
 
 cat("Dimensions:", dim(main_data_imp), "\n")
@@ -448,16 +448,16 @@ cat("\nFinal imputed dataset dimensions:", dim(main_data_imputed),"\n")
 cat("Missing values in final dataset: ", sum(is.na(main_data_imputed)), "\n")
 
 
-# ----------------------------------------
-# SECTION 7: SAVE FEATURE GROUP DATASETS
-# ----------------------------------------
+# ----------------------------------------------
+# SECTION 7: SAVE MAIN & FEATURE GROUP DATASETS
+# ----------------------------------------------
 # Save full imputed dataset and pre-split group datasets
 # Group datasets used in script 05_modelling.R
 
 id_target_weights <- c("SEQN", "hx_fracture", "SDMVPSU", "SDMVSTRA",
                        "samp_wt_mec", "folate_wt", "samp_wt_intrvw")
 
-# Full imputed dataset
+# Full imputed dataset ML
 write_csv(main_data_imputed, "data/processed/main_data_imputed.csv")
 cat("\nSaved: data/processed/main_data_imputed.csv\n")
 
@@ -466,6 +466,7 @@ cat("\nSaved: data/processed/main_data_imputed.csv\n")
 main_data_not_imputed <- bind_cols(data_excluded, data_imputed_ml)
 write_csv(main_data_not_imputed, "data/processed/main_data_not_imputed.csv")
 cat("\nSaved: data/processed/main_data_not_imputed.csv\n")
+
 
 # Group 1: Demography & Lifestyle
 main_data_imputed %>%

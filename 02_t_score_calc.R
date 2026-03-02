@@ -261,7 +261,7 @@ cat("\nSaved: data/processed/dexa_t_scores.csv\n")
 # SECTION 5: MERGE WITH MAIN DATA & SAVE
 # ----------------------------------------
 
-main_data_clean <- read_csv("data/processed/main_data_clean.csv",
+main_data_clean <- read_csv("data/processed/main_data_processed.csv",
                             show_col_types = FALSE)
 
 cat("Rows before T-score join:", nrow(main_data_clean), "\n")
@@ -284,7 +284,7 @@ cat("Total missing values:", sum(is.na(main_data_final)), "\n")
 cat("Dimensions of the merged dataset:", dim(main_data_final), "\n")
 
 # Save
-write_csv(main_data_final, "data/processed/main_data_final.csv")
-cat("\nSaved: data/processed/main_data_final.csv\n")
+write_csv(main_data_final, "data/processed/main_data_for_imputation.csv")
+cat("\nSaved: data/processed/main_data_for_imputation.csv\n")
 
 cat("\nScript 02 complete. Run script 03 next. \n")

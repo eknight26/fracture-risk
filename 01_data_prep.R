@@ -587,7 +587,7 @@ cat("Rows retained (no deletion):", nrow(main_data), "\n")
 # SECTION 6: SAVE
 # -----------------
 
-write_csv(main_data, "data/processed/main_data_clean.csv")
-cat("\nSaved: data/processed/main_data_clean.csv\n")
+write_csv(main_data, "data/processed/main_data_processed.csv")
+cat("\nSaved: data/processed/main_data_processed.csv\n")
 cat("Script 01 complete. Run 02_t_score_calc.R next.\n")
 
