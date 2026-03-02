@@ -1,5 +1,4 @@
 Feature,Q1,Q3,IQR,Lower_Fence,Upper_Fence,N_Below_Fence,N_Above_Fence,Total_Outliers,Pct_Outliers
-cigarettes_per_day,0,0,0,0,0,0,654,654,15.58
 blood_mercury,1.75,7.78,6.03,-16.34,25.87,0,205,205,4.67
 blood_cadmium,1.868,5.171,3.303,-8.042,15.081,0,167,167,3.81
 alc_drinks_per_day,1,2,1,-2,5,0,142,142,4.64

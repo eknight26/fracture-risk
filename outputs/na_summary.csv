@@ -17,7 +17,6 @@ bmd_l1,1421,28.5
 mean_systolic,866,17.4
 mean_diastolic,866,17.4
 bmi,802,16.1
-cigarettes_per_day,790,15.8
 income_ratio,778,15.6
 alp,739,14.8
 phosphate,738,14.8
@@ -45,6 +44,7 @@ liver,11,0.2
 high_bp,7,0.1
 overweight,7,0.1
 asthma,6,0.1
+ever_smoked,3,0.1
 SEQN,0,0
 age,0,0
 gender,0,0

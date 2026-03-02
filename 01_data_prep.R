@@ -130,6 +130,7 @@ dexa_spine <- foreign::read.xport(tf)[,c("SEQN", "DXASPNST", "DXXOSBMD", "DXXL1B
   )
 
 
+
 # --- Body Measurements ---
 # BMDSTATS == 1 = valid body measurement exam
 download.file("https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/P_BMX.XPT", tf <- tempfile(), mode="wb")
@@ -137,6 +138,7 @@ bmx <- foreign::read.xport(tf)[,c("SEQN", "BMDSTATS", "BMXBMI")] %>%
   filter(BMDSTATS == 1) %>%
   select(SEQN, BMXBMI) %>%
   rename(bmi = BMXBMI)
+
 
 
 # --- Blood Pressure ---
@@ -228,14 +230,13 @@ activity <- foreign::read.xport(tf)[,c("SEQN", "PAD680")] %>%
 
 
 # --- Smoking ---
-# SMQ681 = smoked in last 5 days (1 = yes); SMQ720 = cigarettes/day last 5 days
-# 95 = if more than 95 cigarettes/day (ceiling)
+# SMQ020 = smoked at least 100 cigs in life (1 = yes)
+# 95 = if more than 95 cigarettes/day (ceiling), 777 = refused, 999 = don't know
 
-download.file("https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/P_SMQRTU.XPT", tf <- tempfile(), mode="wb")
-smoking <- foreign::read.xport(tf)[,c("SEQN", "SMQ681", "SMQ720")] %>%
-  select(SEQN, SMQ681, SMQ720) %>%
-  mutate(cigarettes_per_day = if_else(SMQ681 == 1, SMQ720, 0)) %>%
-  select(SEQN, cigarettes_per_day)
+download.file("https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/P_SMQ.XPT", tf <- tempfile(), mode="wb")
+smoking <- foreign::read.xport(tf)[,c("SEQN", "SMQ020")] %>%
+  select(SEQN, SMQ020) %>%
+  rename(ever_smoked = SMQ020)
 
 
 
@@ -346,8 +347,9 @@ main_data <- main_data %>%
     ldl_level          = na_if(ldl_level, 9999),
     alc_drinks_per_day = na_if(alc_drinks_per_day, 999),
     alc_drinks_per_day = na_if(alc_drinks_per_day, 777),
-    cigarettes_per_day = na_if(cigarettes_per_day, 999),   
-    cigarettes_per_day = na_if(cigarettes_per_day, 777)
+    ever_smoked        = na_if(ever_smoked, 7),   # refused
+    ever_smoked        = na_if(ever_smoked, 9),   # don't know
+    ever_smoked        = if_else(ever_smoked == 1, 1L, 0L)
   )
 
 
