@@ -325,7 +325,7 @@ binary_vars <- c(
   "had_osteoporosis", "other_fractures", "prednisone",
   "mother_fx_hip", "father_fx_hip", "high_bp", "high_choles", "arthritis", 
   "chf", "chd", "heart_attack", "stroke", "liver", "thyroid", "copd", 
-  "overweight", "asthma", "cancer")
+  "overweight", "asthma", "cancer", "ever_smoked")
 
 main_data <- main_data %>%
   mutate(across(all_of(binary_vars), ~na_if(., 7))) %>%   # refused
