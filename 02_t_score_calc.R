@@ -1,7 +1,5 @@
 # -----------------------------------------------------------------------------
-# FRACTURE RISK PREDICTION - NHANES 2017-2020
 # SCRIPT 02: T-Score Calculation
-# AUTHOR: Ernest Caballero
 # DESCRIPTION: Calculates femur neck and Ward's Triangle T-scores for the
 # 2017-2020 cohort (50+) using a young adult reference group
 # (NHANES 2009-2010, age 20-30), stratified by gender and race.

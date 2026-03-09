@@ -1,7 +1,5 @@
 # -----------------------------------------------------------------------------
-# FRACTURE RISK PREDICTION - NHANES 2017-2020
 # SCRIPT 03: Missing Data Imputation
-# AUTHOR: Ernest Caballero
 # DESCRIPTION: Imputes missing values using MICE (Multiple Imputation by
 # Chained Equations). A single completed dataset is produced (m=1 imputation) 
 # suitable for ML modelling. Survey weights and ID variables are excluded 

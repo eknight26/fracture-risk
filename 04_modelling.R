@@ -1,7 +1,5 @@
 # -----------------------------------------------------------------------------
-# FRACTURE RISK PREDICTION - NHANES 2017-2020
 # SCRIPT 04: Machine Learning Modelling
-# AUTHOR: Ernest Caballero
 # DESCRIPTION: Trains Logistic Regression, Random Forest, and XGBoost models
 # on three feature group datasets and one combined dataset.
 # Class imbalance handled with SMOTE. Hyperparameters tuned with 5-fold CV.
