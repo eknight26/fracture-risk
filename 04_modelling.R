@@ -470,8 +470,4 @@ write_csv(metrics_summary, "outputs/model_metrics_summary.csv")
 cat("\nSaved: outputs/model_metrics.csv\n")
 cat("Saved: outputs/model_metrics_summary.csv\n")
 
-# Save all model result objects (for downstream use in script 05)
-saveRDS(results, "outputs/models/all_model_results.rds")
-cat("Saved: outputs/models/all_model_results.rds\n")
-
-cat("\nScript 04 complete. Run script 05 next.\n")
+cat("\nScript 04 complete.\n")
