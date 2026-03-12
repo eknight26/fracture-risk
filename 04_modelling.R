@@ -61,37 +61,50 @@ binary_vars <- c("had_osteoporosis", "other_fractures", "prednisone",
                  "thyroid", "copd", "overweight", "asthma", "cancer", 
                  "ever_smoked")
 
+# Function to prepare data, reusbale to different groups
 prepare_data <- function(data) {
   data %>%
+    
+    # Remove ID, weight, and other non-feature columns
     select(-any_of(drop_cols)) %>%
-    mutate(
-      hx_fracture = factor(hx_fracture,
-                           levels = c("No_Fracture", "Fracture")),
-      
-      gender    = factor(gender,
-                         levels = c("Male", "Female")),
-      
-      ethnicity = factor(ethnicity,
-                         levels = c("Mexican American", "Other Hispanic",
-                                    "Non-Hispanic White", "Non-Hispanic Black",
-                                    "Non-Hispanic Asian", "Other/Multiracial")),
-      
-      diabetes_status = factor(diabetes_status,
-                               levels = c("Yes", "No", "Borderline"))
-    ) %>%
-    mutate(across(
-      any_of(binary_vars), ~ factor(.x, levels = c("No", "Yes"))
-    )) %>%
+    
+    # Target variable
+    mutate(hx_fracture = factor(hx_fracture,
+                                levels = c("No_Fracture", "Fracture"))) %>%
+    
+    # Binary variables — any_of() safely skips columns not in this group
+    mutate(across(any_of(binary_vars),
+                  ~ factor(.x, levels = c("No", "Yes")))) %>%
+    
+    # Ordered/multi-level categoricals — each block only runs if the column exists
+    { if ("gender" %in% names(.))
+      mutate(., gender = factor(gender,
+                                levels = c("Male", "Female")))
+      else . } %>%
+    
+    { if ("ethnicity" %in% names(.))
+      mutate(., ethnicity = factor(ethnicity,
+                                   levels = c("Mexican American", "Other Hispanic",
+                                              "Non-Hispanic White", "Non-Hispanic Black",
+                                              "Non-Hispanic Asian", "Other/Multiracial")))
+      else . } %>%
+    
+    { if ("diabetes_status" %in% names(.))
+      mutate(., diabetes_status = factor(diabetes_status,
+                                         levels = c("Yes", "No", "Borderline")))
+      else . } %>%
+    
     { if ("osteo_class" %in% names(.))
       mutate(., osteo_class = factor(osteo_class,
                                      levels = c("Normal", "Osteopenia", "Osteoporosis")))
       else . }
 }
 
-# Apply preparation to all datasets
-group1 <- prepare_data(group1)
-group2 <- prepare_data(group2)
-group3 <- prepare_data(group3)
+
+# Apply to all datasets
+group1   <- prepare_data(group1)
+group2   <- prepare_data(group2)
+group3   <- prepare_data(group3)
 combined <- prepare_data(combined)
 
 cat("\nClass distribution (combined dataset):\n")
@@ -115,10 +128,11 @@ cat("Imbalance ratio:", round(sum(combined$hx_fracture == "No_Fracture") / sum(c
 
 train_and_evaluate <- function(data, group_name) {
   
-  cat("\n", strrep("=", 60), "\n", sep = "")
+  cat("\n", strrep("-", 60), "\n", sep = "")
   cat("GROUP:", group_name, "\n")
-  cat(strrep("=", 60), "\n", sep = "")
+  cat(strrep("-", 60), "\n", sep = "")
   cat("Features:", ncol(data) - 1, "| Rows:", nrow(data), "\n")
+  
   
   # --- 1. Train / Test Split ---
   # Stratified on hx_fracture: preserves the ~85/15 class ratio in both sets
@@ -157,13 +171,11 @@ train_and_evaluate <- function(data, group_name) {
     set_mode("classification")
   
   # Random Forest
-  # trees: 500 fixed — enough for stable predictions without excessive runtime
   rf_model <- rand_forest(mtry = tune(), min_n = tune(), trees = 500) %>%
     set_engine("ranger", importance = "impurity") %>%
     set_mode("classification")
   
   # XGBoost (Gradient Boosted Trees)
-  # trees: number of boosting rounds
   # learn_rate:shrinkage per round — lower = slow but robust
   # tree_depth: maximum depth per tree — controls model complexity
   # min_n: minimum samples to split a node
@@ -188,7 +200,7 @@ train_and_evaluate <- function(data, group_name) {
   # grid = 10: 10 random combinations
   # Primary metric: ROC AUC
   
-  num_grid <- 10
+  num_grid <- 5
   tune_metrics <- metric_set(roc_auc, f_meas, sens, spec, precision)
   
   cat("\nTuning Logistic Regression...\n")
@@ -214,14 +226,14 @@ train_and_evaluate <- function(data, group_name) {
   
   
   # --- 7. Select Best Hyperparameters ---
-  best_lr  <- select_best(lr_tune, metric = "roc_auc")
-  best_rf  <- select_best(rf_tune, metric = "roc_auc")
+  best_lr <- select_best(lr_tune, metric = "roc_auc")
+  best_rf <- select_best(rf_tune, metric = "roc_auc")
   best_xgb <- select_best(xgb_tune, metric = "roc_auc")
   
   cat("\nBest hyperparameters (by ROC AUC):\n")
-  cat("  LR  — penalty:", round(best_lr$penalty, 5), "\n")
-  cat("  RF  — mtry:", best_rf$mtry, "| min_n:", best_rf$min_n, "\n")
-  cat("  XGB — trees:", best_xgb$trees,
+  cat("LR  — penalty:", round(best_lr$penalty, 5), "\n")
+  cat("RF  — mtry:", best_rf$mtry, "| min_n:", best_rf$min_n, "\n")
+  cat("XGB — trees:", best_xgb$trees,
       "| learn_rate:", round(best_xgb$learn_rate, 4),
       "| depth:", best_xgb$tree_depth, "\n")
   
@@ -229,9 +241,9 @@ train_and_evaluate <- function(data, group_name) {
   # --- 8. Finalise and Fit on Full Training Set ---
   # final_workflow() replaces tune() placeholders with the best values
   # last_fit() trains on the full training set and evaluates on the test set
-  final_lr_wf <- final_workflow(lr_wf,  best_lr)
-  final_rf_wf <- final_workflow(rf_wf,  best_rf)
-  final_xgb_wf <- final_workflow(xgb_wf, best_xgb)
+  final_lr_wf <- finalize_workflow(lr_wf,  best_lr)
+  final_rf_wf <- finalize_workflow(rf_wf,  best_rf)
+  final_xgb_wf <- finalize_workflow(xgb_wf, best_xgb)
   
   lr_fit <- last_fit(final_lr_wf, split, metrics = tune_metrics)
   rf_fit <- last_fit(final_rf_wf, split, metrics = tune_metrics)
@@ -351,16 +363,16 @@ train_and_evaluate <- function(data, group_name) {
 # -----------------------------------------------
 # SECTION 4: RUN MODELS FOR ALL GROUPS
 # -----------------------------------------------
-# imap() passes both the dataset and its name from the named list
 
 datasets <- list(
   "Group 1: Demographics & Lifestyle" = group1,
-  "Group 2: Laboratory"               = group2,
-  "Group 3: Bone Scans"               = group3,
-  "Combined"                          = combined
+  "Group 2: Laboratory" = group2,
+  "Group 3: Bone Scans" = group3,
+  "Combined" = combined
 )
 
 cat("\n\nStarting model training...\n")
+# imap() passes both the dataset and its name from the named list
 results <- imap(datasets, ~ train_and_evaluate(.x, .y))
 cat("\nAll models trained.\n")
 

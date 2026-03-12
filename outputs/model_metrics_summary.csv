@@ -1,0 +1,13 @@
+Group,Model,f_meas,sens,spec,precision,roc_auc
+Combined,Logistic Regression,0.894,0.904,0.315,0.885,0.723
+Combined,XGBoost,0.921,0.992,0.055,0.86,0.713
+Combined,Random Forest,0.922,1,0.007,0.855,0.71
+Group 1: Demographics & Lifestyle,Logistic Regression,0.883,0.89,0.267,0.876,0.681
+Group 1: Demographics & Lifestyle,XGBoost,0.92,0.988,0.062,0.86,0.676
+Group 1: Demographics & Lifestyle,Random Forest,0.92,0.989,0.062,0.86,0.663
+Group 3: Bone Scans,Logistic Regression,0.921,0.999,0.007,0.855,0.559
+Group 3: Bone Scans,Random Forest,0.913,0.979,0.034,0.856,0.547
+Group 3: Bone Scans,XGBoost,0.921,1,0,0.854,0.536
+Group 2: Laboratory,XGBoost,0.921,1,0,0.854,0.523
+Group 2: Laboratory,Random Forest,0.919,0.995,0,0.853,0.489
+Group 2: Laboratory,Logistic Regression,0.921,1,0,0.854,0.472

@@ -1,0 +1,61 @@
+.metric,.estimator,.estimate,.config,model,group
+f_meas,binary,0.8830715532286213,pre0_mod0_post0,Logistic Regression,Group 1: Demographics & Lifestyle
+sens,binary,0.8898007033997656,pre0_mod0_post0,Logistic Regression,Group 1: Demographics & Lifestyle
+spec,binary,0.2671232876712329,pre0_mod0_post0,Logistic Regression,Group 1: Demographics & Lifestyle
+precision,binary,0.8764434180138568,pre0_mod0_post0,Logistic Regression,Group 1: Demographics & Lifestyle
+roc_auc,binary,0.6808283415503701,pre0_mod0_post0,Logistic Regression,Group 1: Demographics & Lifestyle
+f_meas,binary,0.920392584514722,pre0_mod0_post0,Random Forest,Group 1: Demographics & Lifestyle
+sens,binary,0.9894490035169988,pre0_mod0_post0,Random Forest,Group 1: Demographics & Lifestyle
+spec,binary,0.06164383561643835,pre0_mod0_post0,Random Forest,Group 1: Demographics & Lifestyle
+precision,binary,0.8603465851172273,pre0_mod0_post0,Random Forest,Group 1: Demographics & Lifestyle
+roc_auc,binary,0.6628017151391546,pre0_mod0_post0,Random Forest,Group 1: Demographics & Lifestyle
+f_meas,binary,0.9198036006546645,pre0_mod0_post0,XGBoost,Group 1: Demographics & Lifestyle
+sens,binary,0.9882766705744431,pre0_mod0_post0,XGBoost,Group 1: Demographics & Lifestyle
+spec,binary,0.06164383561643835,pre0_mod0_post0,XGBoost,Group 1: Demographics & Lifestyle
+precision,binary,0.860204081632653,pre0_mod0_post0,XGBoost,Group 1: Demographics & Lifestyle
+roc_auc,binary,0.6755126949204258,pre0_mod0_post0,XGBoost,Group 1: Demographics & Lifestyle
+f_meas,binary,0.9211663066954643,pre0_mod0_post0,Logistic Regression,Group 2: Laboratory
+sens,binary,1,pre0_mod0_post0,Logistic Regression,Group 2: Laboratory
+spec,binary,0,pre0_mod0_post0,Logistic Regression,Group 2: Laboratory
+precision,binary,0.8538538538538538,pre0_mod0_post0,Logistic Regression,Group 2: Laboratory
+roc_auc,binary,0.4720808106762593,pre0_mod0_post0,Logistic Regression,Group 2: Laboratory
+f_meas,binary,0.9188311688311688,pre0_mod0_post0,Random Forest,Group 2: Laboratory
+sens,binary,0.9953106682297772,pre0_mod0_post0,Random Forest,Group 2: Laboratory
+spec,binary,0,pre0_mod0_post0,Random Forest,Group 2: Laboratory
+precision,binary,0.8532663316582915,pre0_mod0_post0,Random Forest,Group 2: Laboratory
+roc_auc,binary,0.4889110151118535,pre0_mod0_post0,Random Forest,Group 2: Laboratory
+f_meas,binary,0.9211663066954643,pre0_mod0_post0,XGBoost,Group 2: Laboratory
+sens,binary,1,pre0_mod0_post0,XGBoost,Group 2: Laboratory
+spec,binary,0,pre0_mod0_post0,XGBoost,Group 2: Laboratory
+precision,binary,0.8538538538538538,pre0_mod0_post0,XGBoost,Group 2: Laboratory
+roc_auc,binary,0.5225633943053525,pre0_mod0_post0,XGBoost,Group 2: Laboratory
+f_meas,binary,0.921081081081081,pre0_mod0_post0,Logistic Regression,Group 3: Bone Scans
+sens,binary,0.9988276670574443,pre0_mod0_post0,Logistic Regression,Group 3: Bone Scans
+spec,binary,0.00684931506849315,pre0_mod0_post0,Logistic Regression,Group 3: Bone Scans
+precision,binary,0.8545636910732196,pre0_mod0_post0,Logistic Regression,Group 3: Bone Scans
+roc_auc,binary,0.5591706948883072,pre0_mod0_post0,Logistic Regression,Group 3: Bone Scans
+f_meas,binary,0.9130672498633133,pre0_mod0_post0,Random Forest,Group 3: Bone Scans
+sens,binary,0.9788980070339977,pre0_mod0_post0,Random Forest,Group 3: Bone Scans
+spec,binary,0.03424657534246575,pre0_mod0_post0,Random Forest,Group 3: Bone Scans
+precision,binary,0.8555327868852459,pre0_mod0_post0,Random Forest,Group 3: Bone Scans
+roc_auc,binary,0.5474955435288825,pre0_mod0_post0,Random Forest,Group 3: Bone Scans
+f_meas,binary,0.9211663066954643,pre0_mod0_post0,XGBoost,Group 3: Bone Scans
+sens,binary,1,pre0_mod0_post0,XGBoost,Group 3: Bone Scans
+spec,binary,0,pre0_mod0_post0,XGBoost,Group 3: Bone Scans
+precision,binary,0.8538538538538538,pre0_mod0_post0,XGBoost,Group 3: Bone Scans
+roc_auc,binary,0.5361897573431402,pre0_mod0_post0,XGBoost,Group 3: Bone Scans
+f_meas,binary,0.894431554524362,pre0_mod0_post0,Logistic Regression,Combined
+sens,binary,0.9038686987104337,pre0_mod0_post0,Logistic Regression,Combined
+spec,binary,0.3150684931506849,pre0_mod0_post0,Logistic Regression,Combined
+precision,binary,0.8851894374282434,pre0_mod0_post0,Logistic Regression,Combined
+roc_auc,binary,0.7234498707221891,pre0_mod0_post0,Logistic Regression,Combined
+f_meas,binary,0.9216639654240951,pre0_mod0_post0,Random Forest,Combined
+sens,binary,1,pre0_mod0_post0,Random Forest,Combined
+spec,binary,0.00684931506849315,pre0_mod0_post0,Random Forest,Combined
+precision,binary,0.8547094188376754,pre0_mod0_post0,Random Forest,Combined
+roc_auc,binary,0.7104257335110573,pre0_mod0_post0,Random Forest,Combined
+f_meas,binary,0.9210669569951008,pre0_mod0_post0,XGBoost,Combined
+sens,binary,0.9917936694021102,pre0_mod0_post0,XGBoost,Combined
+spec,binary,0.0547945205479452,pre0_mod0_post0,XGBoost,Combined
+precision,binary,0.8597560975609756,pre0_mod0_post0,XGBoost,Combined
+roc_auc,binary,0.7125535980985725,pre0_mod0_post0,XGBoost,Combined
